@@ -1,15 +1,30 @@
 import streamlit as st
-import re
+import nltk
+import ssl
+
+# --- CLOUD FIX: AUTO-DOWNLOAD BRAINS ---
+# This forces the cloud computer to download the necessary dictionaries
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+# Download specific NLTK data required by TextBlob
+nltk.download('punkt')
+nltk.download('punkt_tab')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('averaged_perceptron_tagger_eng')
+
+# --- NOW IMPORT THE REST ---
 from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import re
 import time
 
-# --- PAGE SETUP ---
-st.set_page_config(
-    page_title="Project Veritas: Full Scanner",
-    page_icon="🛡️",
-    layout="wide" # Wide layout for better reading
-)
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="Media Shield", page_icon="🛡️", layout="wide")
 
 # ==========================================
 # 🧠 INTELLIGENCE DICTIONARIES
@@ -28,9 +43,6 @@ class MediaShieldScanner:
         self.vader = SentimentIntensityAnalyzer()
 
     def analyze_sentence(self, sentence_obj):
-        """
-        Analyzes a SINGLE sentence and returns a Risk Score (0-100) + Flags.
-        """
         text = sentence_obj.string
         score = 0
         flags = []
@@ -43,7 +55,6 @@ class MediaShieldScanner:
             flags.append(f"High Intensity ({int(intensity)}%)")
 
         # 2. SUBJECTIVITY (TextBlob)
-        # We use simple subjectivity here as MVR is unreliable on short sentences
         subj = sentence_obj.sentiment.subjectivity
         if subj > 0.7:
             score += 25
@@ -68,16 +79,12 @@ class MediaShieldScanner:
         blob = TextBlob(full_text)
         sentences = blob.sentences
         
-        # Metrics
         total_sentences = len(sentences)
         toxic_sentences = []
         cumulative_score = 0
         
-        # SCAN EACH SENTENCE
         for i, sent in enumerate(sentences):
             risk_score, flags = self.analyze_sentence(sent)
-            
-            # If it's risky, save it to the "Toxic List"
             if risk_score > 40:
                 toxic_sentences.append({
                     "index": i + 1,
@@ -85,17 +92,11 @@ class MediaShieldScanner:
                     "score": risk_score,
                     "flags": flags
                 })
-            
             cumulative_score += risk_score
 
-        # CALCULATE GLOBAL SCORE
-        # If it's a headline (1 sentence), score is just that sentence.
-        # If it's an article, score is the Density of Toxicity.
         if total_sentences < 2:
             final_score = cumulative_score
         else:
-            # Formula: What percentage of the article is toxic?
-            # If 30% of sentences are toxic, that's a High Risk article.
             infection_rate = (len(toxic_sentences) / total_sentences) 
             final_score = min(infection_rate * 250, 100) 
 
@@ -109,31 +110,25 @@ class MediaShieldScanner:
 # ==========================================
 # 🖥️ UI LAYOUT
 # ==========================================
-st.title("🛡️ Media Shield: Full Article Scanner")
-st.markdown("### The Forensic 'CT Scan' for News")
+st.title("🛡️ Media Shield: Cloud Edition")
+st.caption("Forensic Logic Online • Powered by VADER & TextBlob")
 
-# Input
-text_input = st.text_area("Paste Article or Headline:", height=250, placeholder="Paste the full text here...")
+text_input = st.text_area("Paste Article or Headline:", height=200, placeholder="Paste text here to run forensic scan...")
 btn = st.button("Run Forensic Scan", type="primary")
 
 if btn and text_input:
     scanner = MediaShieldScanner()
-    
-    with st.spinner("Slicing text into sentences and analyzing logic..."):
-        time.sleep(1)
+    with st.spinner("Analyzing linguistic patterns..."):
+        time.sleep(0.5)
         report = scanner.scan_text(text_input)
         
     score = report['score']
     
-    # --- DASHBOARD HEADER ---
     col1, col2, col3 = st.columns([1, 1, 2])
-    
     with col1:
-        # Dynamic Color
         color = "green"
         if score > 40: color = "orange"
         if score > 70: color = "red"
-        
         st.markdown(f"""
             <div style="text-align: center; border: 2px solid {color}; padding: 10px; border-radius: 10px;">
                 <h1 style="color:{color}; margin:0;">{score}/100</h1>
@@ -142,29 +137,26 @@ if btn and text_input:
         """, unsafe_allow_html=True)
         
     with col2:
-        st.metric("Total Sentences", report['sentence_count'])
+        st.metric("Sentences Scanned", report['sentence_count'])
         st.metric("Toxic Sentences", report['toxic_count'])
 
     with col3:
         if score > 70:
-            st.error("🚨 CRITICAL: This article is heavily saturated with manipulative language.")
+            st.error("🚨 CRITICAL: Heavily saturated with manipulative language.")
         elif score > 40:
-            st.warning("⚠️ SUSPICIOUS: Several sentences contain high levels of subjectivity or triggers.")
+            st.warning("⚠️ SUSPICIOUS: Contains high levels of subjectivity.")
         else:
-            st.success("✅ CLEAN: The text appears mostly objective.")
+            st.success("✅ CLEAN: Mostly objective reporting.")
 
     st.divider()
 
-    # --- THE SMOKING GUN (Toxic Sentences) ---
     if report['toxic_list']:
-        st.subheader("🚩 The 'Smoking Gun' Evidence")
-        st.caption("These specific sentences triggered the manipulation filters:")
-        
+        st.subheader("🚩 The Evidence Locker")
         for item in report['toxic_list']:
             with st.expander(f"Risk {item['score']}%: \"{item['text'][:50]}...\"", expanded=True):
-                st.markdown(f"**Full Sentence:** *{item['text']}*")
-                st.write("**Flags Detected:**")
+                st.markdown(f"**Full Text:** *{item['text']}*")
                 for flag in item['flags']:
                     st.code(flag)
     else:
-        st.info("No specifically toxic sentences were found.")
+        st.info("No specifically toxic sentences found.")
+        
