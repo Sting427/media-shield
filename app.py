@@ -8,181 +8,201 @@ import plotly.graph_objects as go
 from transformers import pipeline
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Media Shield: Research Core", page_icon="🧪", layout="wide")
+st.set_page_config(page_title="Media Shield: Research Scanner", page_icon="🕵️", layout="wide")
 
 # ==========================================
 # 🧠 THE NEURAL ENGINE (BERT)
 # ==========================================
 @st.cache_resource
 def load_brain():
-    classifier = pipeline("text-classification", model="unitary/toxic-bert", top_k=None)
-    return classifier
+    # Load Toxic-BERT. 
+    # top_k=None ensures we get scores for ALL categories (toxic, threat, etc.)
+    return pipeline("text-classification", model="unitary/toxic-bert", top_k=None)
 
-class NeuralBrain:
+class NeuralScanner:
     def __init__(self):
         self.classifier = load_brain()
 
-    def analyze(self, text):
-        try:
-            results = self.classifier(text[:2000])
-            if isinstance(results, list) and len(results) > 0:
-                data = results[0] if isinstance(results[0], list) else results
-            else:
-                return None
-            scores = {item['label']: item['score'] for item in data}
-            return scores
-        except Exception as e:
-            st.error(f"Neural Engine Error: {str(e)}")
-            return None
+    def analyze_batch(self, texts, progress_bar):
+        """
+        Analyzes a list of texts one by one and returns a list of results.
+        Updates the progress bar as it goes.
+        """
+        results = []
+        total = len(texts)
+        
+        for i, text in enumerate(texts):
+            try:
+                # Analyze text (truncated to 512 chars for speed)
+                prediction = self.classifier(text[:512])
+                
+                # Parse output
+                # Output format: [[{'label': 'toxic', 'score': 0.9}, ...]]
+                data = prediction[0] if isinstance(prediction, list) else prediction
+                scores = {item['label']: item['score'] for item in data}
+                
+                # Calculate Composite Danger Score
+                danger = (
+                    scores.get('identity_hate', 0) * 100 + 
+                    scores.get('threat', 0) * 80 + 
+                    scores.get('severe_toxic', 0) * 60 +
+                    scores.get('toxic', 0) * 30
+                )
+                
+                results.append({
+                    "text": text,
+                    "danger_score": min(int(danger), 100),
+                    "identity_hate": scores.get('identity_hate', 0),
+                    "threat": scores.get('threat', 0),
+                    "toxic": scores.get('toxic', 0)
+                })
+                
+                # Update UI every step
+                progress_bar.progress((i + 1) / total, text=f"Scanning record {i+1}/{total}...")
+                
+            except Exception as e:
+                # If one fails, skip it, don't crash
+                continue
+                
+        return pd.DataFrame(results)
 
 # ==========================================
-# 🛠️ EXTRACTION ENGINES
+# 🛠️ DATA EXTRACTION
 # ==========================================
-def extract_from_url(url):
+def load_dataframe(file):
+    """Smart loader that handles CSV or Zipped CSV"""
     try:
-        downloaded = trafilatura.fetch_url(url)
-        if not downloaded: return None
-        return trafilatura.extract(downloaded)
+        if file.name.endswith('.csv'):
+            return pd.read_csv(file)
+        elif file.name.endswith('.zip'):
+            with zipfile.ZipFile(file) as z:
+                target = next((f for f in z.namelist() if f.endswith('.csv')), None)
+                with z.open(target) as f:
+                    return pd.read_csv(f)
     except: return None
 
-def extract_from_pdf(file):
-    try:
-        reader = PdfReader(file)
-        return "\n".join([page.extract_text() for page in reader.pages])
-    except: return None
-
-def process_dataframe(df):
-    """Helper to grab random samples from any dataframe"""
-    try:
-        # Smart Column Detection
-        possible_cols = ['comment_text', 'text', 'content', 'tweet', 'message']
-        text_col = next((col for col in possible_cols if col in df.columns), None)
-        
-        if not text_col:
-            text_col = df.columns[0] # Fallback to first column
-            
-        # Grab 3 random samples
-        sample_count = min(3, len(df))
-        samples = df[text_col].sample(sample_count).tolist()
-        
-        st.toast(f"✅ Loaded {sample_count} samples from column: '{text_col}'")
-        return "\n\n--- [NEXT SAMPLE] ---\n\n".join(str(s) for s in samples)
-    except Exception as e:
-        return f"Error processing data: {str(e)}"
-
-def extract_from_csv(file):
-    try:
-        df = pd.read_csv(file)
-        return process_dataframe(df)
-    except Exception as e:
-        return f"Error reading CSV: {str(e)}"
-
-def extract_from_zip(file):
-    try:
-        with zipfile.ZipFile(file) as z:
-            # Find the first CSV file inside the zip
-            target_file = next((f for f in z.namelist() if f.endswith('.csv')), None)
-            
-            if not target_file:
-                return "Error: No CSV file found inside this ZIP archive."
-            
-            # Read specific file from zip
-            with z.open(target_file) as f:
-                df = pd.read_csv(f)
-                return process_dataframe(df)
-    except Exception as e:
-        return f"Error reading ZIP: {str(e)}"
+def find_text_column(df):
+    """Auto-detects the column containing the comments"""
+    candidates = ['comment_text', 'text', 'content', 'tweet', 'message', 'review']
+    for col in candidates:
+        if col in df.columns: return col
+    return df.columns[0] # Fallback
 
 # ==========================================
 # 🖥️ UI LAYOUT
 # ==========================================
-st.title("🧪 Media Shield: Research Core")
-st.caption("Neural Analysis for Web, PDF, Datasets (CSV), and Archives (ZIP)")
+st.title("🕵️ Media Shield: Deep Scanner")
+st.caption("Batch Analysis Tool • Upload Datasets to find Toxic Needles in the Haystack")
 
-col1, col2 = st.columns([1, 1])
+# --- SIDEBAR SETTINGS ---
+with st.sidebar:
+    st.header("⚙️ Scanner Settings")
+    st.info("Higher depth = Longer wait time.")
+    scan_limit = st.slider("Max Records to Scan:", min_value=10, max_value=200, value=20, step=10)
+    st.markdown("---")
+    st.caption("**Note on Speed:**\nThe AI takes about 0.5 seconds per record. Scanning 100 records takes ~50 seconds.")
 
+col1, col2 = st.columns([1, 2])
+
+# --- INPUT SECTION ---
 with col1:
-    st.subheader("1. Input Data")
-    input_type = st.radio("Source:", ["Paste Text / URL", "Upload File"], horizontal=True)
+    st.subheader("1. Load Dataset")
+    uploaded = st.file_uploader("Upload CSV or ZIP", type=["csv", "zip"])
     
-    target_text = ""
+    dataset = None
+    text_col = None
     
-    if input_type == "Paste Text / URL":
-        user_input = st.text_area("Content:", height=300, placeholder="Paste text or URL here...")
-        if user_input:
-            if user_input.strip().startswith("http"):
-                with st.spinner("🕷️ Deploying Scraper..."):
-                    target_text = extract_from_url(user_input)
-                    if target_text: st.success("Extracted content successfully.")
-                    else: st.error("Could not scrape URL.")
-            else:
-                target_text = user_input
-    else:
-        # UPDATED: Added "zip" to type list
-        uploaded = st.file_uploader("Upload Document", type=["pdf", "csv", "txt", "zip"])
-        if uploaded:
-            with st.spinner("📂 Processing File..."):
-                if uploaded.name.endswith(".csv"):
-                    target_text = extract_from_csv(uploaded)
-                elif uploaded.name.endswith(".zip"):
-                    target_text = extract_from_zip(uploaded)
-                elif uploaded.name.endswith(".pdf"):
-                    target_text = extract_from_pdf(uploaded)
-                elif uploaded.name.endswith(".txt"):
-                    target_text = uploaded.read().decode("utf-8")
-                
-                if target_text and not target_text.startswith("Error"):
-                    st.success(f"File loaded: {uploaded.name}")
-                elif target_text:
-                    st.error(target_text)
+    if uploaded:
+        df = load_dataframe(uploaded)
+        if df is not None:
+            dataset = df
+            text_col = find_text_column(df)
+            st.success(f"Loaded {len(df)} rows.")
+            st.info(f"Targeting Column: **'{text_col}'**")
+            
+            # Preview
+            with st.expander("Preview Data"):
+                st.dataframe(df.head(3))
+        else:
+            st.error("Could not read file.")
 
-    analyze_btn = st.button("🚀 Run Neural Scan", type="primary", use_container_width=True)
+    start_btn = st.button("🚀 Start Deep Scan", type="primary", use_container_width=True, disabled=(dataset is None))
 
+# --- REPORT SECTION ---
 with col2:
-    st.subheader("2. Forensic Analysis")
+    st.subheader("2. Audit Report")
     
-    if analyze_btn and target_text:
-        with st.spinner("🧠 Neural Network is analyzing vectors..."):
-            brain = NeuralBrain()
-            scores = brain.analyze(target_text)
+    if start_btn and dataset is not None:
+        scanner = NeuralScanner()
+        
+        # 1. Prepare the Batch
+        # We take the top N rows based on the slider
+        batch_data = dataset[text_col].astype(str).head(scan_limit).tolist()
+        
+        # 2. Run Analysis with Progress Bar
+        progress = st.progress(0, text="Initializing Neural Engine...")
+        results_df = scanner.analyze_batch(batch_data, progress)
+        progress.empty() # Remove bar when done
+        
+        if not results_df.empty:
+            # 3. CALCULATE STATS
+            avg_danger = int(results_df['danger_score'].mean())
+            toxic_count = len(results_df[results_df['danger_score'] > 50])
+            hate_count = len(results_df[results_df['identity_hate'] > 0.5])
             
-        if scores:
-            danger_score = (
-                scores.get('identity_hate', 0) * 100 + 
-                scores.get('threat', 0) * 80 + 
-                scores.get('severe_toxic', 0) * 60 +
-                scores.get('toxic', 0) * 30
-            )
-            final_score = min(int(danger_score), 100)
+            # --- DASHBOARD METRICS ---
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.metric("Avg Toxicity", f"{avg_danger}/100", delta_color="inverse")
+            with m2:
+                st.metric("Toxic Records", f"{toxic_count} / {scan_limit}")
+            with m3:
+                st.metric("Hate Crimes", f"{hate_count}", help="Rows with confirmed Identity Hate")
+                
+            # --- PIE CHART ---
+            # Categorize the results
+            safe = len(results_df[results_df['danger_score'] < 30])
+            sus = len(results_df[(results_df['danger_score'] >= 30) & (results_df['danger_score'] < 70)])
+            danger = len(results_df[results_df['danger_score'] >= 70])
             
-            color = "#4CAF50" 
-            if final_score > 40: color = "#FFA500"
-            if final_score > 80: color = "#FF0000"
-
-            st.markdown(f"""
-            <div style="background-color: #0e1117; border-left: 10px solid {color}; border-radius: 5px; padding: 20px; margin-bottom: 20px;">
-                <h1 style="font-size: 3em; margin: 0; color: {color};">{final_score}/100</h1>
-                <p style="color: #aaa; text-transform: uppercase; letter-spacing: 1px;">Toxicity Index</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            labels = list(scores.keys())
-            values = [scores[k] * 100 for k in labels]
-            colors = ['#ff4b4b' if v > 50 else '#333' for v in values]
-            
-            fig = go.Figure(go.Bar(
-                x=values, y=labels, orientation='h', marker_color=colors,
-                text=[f"{v:.1f}%" for v in values], textposition='auto'
-            ))
-            fig.update_layout(title="Detailed Vector Analysis", xaxis_title="Confidence (%)", yaxis_autorange="reversed", height=400, margin=dict(l=20, r=20, t=40, b=20))
+            fig = go.Figure(data=[go.Pie(
+                labels=['Safe', 'Suspicious', 'Dangerous'],
+                values=[safe, sus, danger],
+                hole=.4,
+                marker_colors=['#4CAF50', '#FFA500', '#FF0000']
+            )])
+            fig.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0))
             st.plotly_chart(fig, use_container_width=True)
             
-            st.subheader("📝 AI Verdict")
-            if final_score < 20: st.success("✅ **Clean Content**")
-            elif scores.get('identity_hate', 0) > 0.5: st.error(f"🚨 **HATE SPEECH:** Attack on identity detected ({int(scores['identity_hate']*100)}%).")
-            elif scores.get('threat', 0) > 0.5: st.error(f"🛑 **THREAT DETECTED:** Credible physical threat detected.")
-            elif scores.get('toxic', 0) > 0.8: st.warning("⚠️ **Highly Toxic:** Inflammatory language.")
-            else: st.info("⚠️ **Suspicious:** Potential negativity detected.")
-        
-        with st.expander("Show Analyzed Text Sample"):
-            st.text(target_text[:1000] + "...")
+            # --- THE "WORST OFFENDERS" TABLE ---
+            st.subheader("🚩 The Worst Offenders")
+            st.caption("These rows triggered the highest alarms:")
+            
+            # Sort by danger score descending
+            worst_df = results_df.sort_values(by="danger_score", ascending=False).head(5)
+            
+            for index, row in worst_df.iterrows():
+                # Dynamic Border Color
+                b_color = "#FF0000" if row['danger_score'] > 80 else "#FFA500"
+                
+                st.markdown(f"""
+                <div style="border-left: 5px solid {b_color}; background-color: #262730; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="font-weight: bold; color: {b_color};">THREAT SCORE: {row['danger_score']}</span>
+                        <span style="color: #aaa; font-size: 0.8em;">Identity Hate Confidence: {int(row['identity_hate']*100)}%</span>
+                    </div>
+                    <p style="margin-top: 5px; font-style: italic;">"{row['text'][:200]}..."</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            # Download Full Report
+            csv_data = results_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "📥 Download Full Forensic Report",
+                data=csv_data,
+                file_name="toxicity_audit_report.csv",
+                mime="text/csv"
+            )
+
+    elif dataset is None:
+        st.info("👈 Upload a dataset to begin the audit.")
