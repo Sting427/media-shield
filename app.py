@@ -172,14 +172,19 @@ if btn and text_input:
     with col2:
         st.subheader("2. Cognitive Attack Surface")
         
-        # RADAR CHART (3 WINGS)
-        categories = ["EMOTION (Holiday)", "PRESSURE (Cialdini)", "LOGIC (Dobelli)"]
-        values = [data["breakdown"]["EMOTION"], data["breakdown"]["PRESSURE"], data["breakdown"]["LOGIC"]]
-        
-        # Close the loop for radar chart
-        values += [values[0]]
-        categories += [categories[0]]
-
+        # --- DETAILED LEGEND ---
+    st.markdown("""
+    <div style="margin-top: 20px; font-size: 0.9em; color: #ccc;">
+        <strong>THE FORENSIC KEY:</strong> <br>
+        <span style="color:#FF4B4B">■ Anger (Emotion)</span> &nbsp;&nbsp; 
+        <span style="color:#800080">■ Fear (Emotion)</span> &nbsp;&nbsp;
+        <span style="color:#0068C9">■ Urgency (Pressure)</span> &nbsp;&nbsp;
+        <span style="color:#00C9A7">■ Authority (Pressure)</span> &nbsp;&nbsp;
+        <span style="color:#29B5E8">■ Social Proof (Pressure)</span> &nbsp;&nbsp;
+        <span style="color:#FF8C00">■ Tribalism (Logic)</span> &nbsp;&nbsp;
+        <span style="color:#8D6E63">■ Sunk Cost (Logic)</span>
+    </div>
+    """, unsafe_allow_html=True)
         fig = go.Figure()
         fig.add_trace(go.Scatterpolar(
             r=values,
@@ -218,3 +223,4 @@ if btn and text_input:
     """, unsafe_allow_html=True)
     
     st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
+
