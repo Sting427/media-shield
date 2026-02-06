@@ -185,7 +185,7 @@ if btn and text_input:
         <span style="color:#8D6E63">■ Sunk Cost (Logic)</span>
     </div>
     """, unsafe_allow_html=True)
-        fig = go.Figure()
+    fig = go.Figure()
         fig.add_trace(go.Scatterpolar(
             r=values,
             theta=categories,
@@ -223,4 +223,5 @@ if btn and text_input:
     """, unsafe_allow_html=True)
     
     st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
+
 
