@@ -1,116 +1,36 @@
 import streamlit as st
 import trafilatura
 from pypdf import PdfReader
-import re
 import time
 import plotly.graph_objects as go
-from textblob import TextBlob
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from transformers import pipeline
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Media Shield: Universal Core", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Media Shield: Neural Core", page_icon="🧠", layout="wide")
 
 # ==========================================
-# 🧠 UNIVERSAL INTELLIGENCE DATABASE
+# 🧠 THE NEURAL ENGINE (BERT)
 # ==========================================
-# This dictionary detects PATTERNS, not just specific sentences.
-INTELLIGENCE = {
-    "DEHUMANIZATION": {
-        "score": 30, # High Threat
-        "color": "#000000",
-        "patterns": [
-            r"cancer", r"vermin", r"cockroach", r"insect", r"infest", r"plague", 
-            r"filth", r"garbage", r"trash", r"animals?", r"beasts?", r"savages?", 
-            r"subhuman", r"parasite", r"disease", r"virus", r"bacteria"
-        ]
-    },
-    "VIOLENCE_INCITEMENT": {
-        "score": 25,
-        "color": "#FF0000",
-        "patterns": [
-            r"eliminate", r"eradicate", r"wipe out", r"cleansing", r"crush", 
-            r"destroy them", r"kill", r"slaughter", r"burn", r"hang", r"shoot",
-            r"no mercy", r"hunting"
-        ]
-    },
-    "GROUP_ATTACK": {
-        "score": 15,
-        "color": "#FF4500",
-        "patterns": [
-            r"cult", r"invaders?", r"illegals?", r"aliens?", r"thugs", 
-            r"criminals", r"terrorists?", r"rapists?", r"groomers?",
-            r"loot", r"steal", r"rob", r"jihadis?"
-        ]
-    },
-    "MANIPULATION_TACTICS": {
-        "score": 10,
-        "color": "#800080",
-        "patterns": [
-            r"barbaric", r"backward", r"primitive", r"uncivilized", 
-            r"brainwashed", r"indoctrinated", r"radical", r"extremist",
-            r"fundamentalist", r"threat to", r"danger to"
-        ]
-    }
-}
+# This downloads a real AI model trained on Wikipedia comments.
+# It understands CONTEXT, not just keywords.
+@st.cache_resource
+def load_brain():
+    # We use 'unitary/toxic-bert' - the Gold Standard for hate speech detection
+    classifier = pipeline("text-classification", model="unitary/toxic-bert", return_all_scores=True)
+    return classifier
 
-class UniversalBrain:
+class NeuralBrain:
     def __init__(self):
-        self.vader = SentimentIntensityAnalyzer()
+        self.classifier = load_brain()
 
     def analyze(self, text):
-        results = {
-            "score": 0,
-            "hits": {}, # Stores hits by category
-            "verdict": "",
-            "explanation": []
-        }
+        # Truncate to 512 tokens (BERT limit) for speed
+        results = self.classifier(text[:2000]) 
         
-        # 1. SCAN FOR PATTERNS
-        total_hits = 0
+        # The model returns a list of dictionaries: [{'label': 'toxic', 'score': 0.9}, ...]
+        scores = {item['label']: item['score'] for item in results[0]}
         
-        for category, data in INTELLIGENCE.items():
-            results["hits"][category] = []
-            for pattern in data["patterns"]:
-                # Find all matches (case insensitive)
-                matches = re.findall(pattern, text, re.IGNORECASE)
-                if matches:
-                    # Add unique hits to list
-                    unique_matches = list(set(matches))
-                    results["hits"][category].extend(unique_matches)
-                    
-                    # Calculate Score
-                    results["score"] += len(matches) * data["score"]
-                    total_hits += len(matches)
-
-        # Cap score at 100
-        results["score"] = min(results["score"], 100)
-        
-        # 2. GENERATE DYNAMIC REPORT
-        # This part is now SMART. It reads what it found and writes a sentence about it.
-        
-        if results["hits"]["DEHUMANIZATION"]:
-            words_found = ", ".join([f"'{w}'" for w in results["hits"]["DEHUMANIZATION"][:3]])
-            results["explanation"].append(f"⚠️ **Dehumanization Detected:** The text refers to people as {words_found}. This is a dangerous tactic used to strip targets of human rights.")
-            
-        if results["hits"]["VIOLENCE_INCITEMENT"]:
-            words_found = ", ".join([f"'{w}'" for w in results["hits"]["VIOLENCE_INCITEMENT"][:3]])
-            results["explanation"].append(f"🚨 **Incitement to Violence:** Usage of terms like {words_found} implies a call for physical harm or elimination.")
-
-        if results["hits"]["GROUP_ATTACK"]:
-            words_found = ", ".join([f"'{w}'" for w in results["hits"]["GROUP_ATTACK"][:3]])
-            results["explanation"].append(f"🛑 **Group Hostility:** The text generalizes a group as {words_found}, promoting collective guilt.")
-
-        if results["score"] == 0:
-            results["verdict"] = "✅ SAFE CONTENT"
-            results["explanation"].append("No common hate speech patterns or manipulation triggers were detected.")
-        elif results["score"] > 75:
-            results["verdict"] = "🚨 EXTREME THREAT"
-        elif results["score"] > 40:
-            results["verdict"] = "⚠️ TOXIC CONTENT"
-        else:
-            results["verdict"] = "⚠️ SUSPICIOUS"
-
-        return results
+        return scores
 
 # ==========================================
 # 🛠️ HELPER FUNCTIONS
@@ -131,8 +51,8 @@ def extract_from_pdf(file):
 # ==========================================
 # 🖥️ UI LAYOUT
 # ==========================================
-st.title("🛡️ Media Shield: Universal Core")
-st.caption("Running in Offline Mode • Universal Pattern Matching")
+st.title("🧠 Media Shield: Neural Core")
+st.caption("Running 'toxic-bert' Transformer Model • Context-Aware Analysis")
 
 col1, col2 = st.columns([1, 1])
 
@@ -143,7 +63,7 @@ with col1:
     target_text = ""
     
     if input_type == "Paste Text / URL":
-        user_input = st.text_area("Content:", height=300, placeholder="Paste ANY controversial text here...")
+        user_input = st.text_area("Content:", height=300, placeholder="Paste text to test the Neural Network...")
         if user_input:
             if user_input.startswith("http"):
                 with st.spinner("🕷️ Deploying Scraper..."):
@@ -159,47 +79,78 @@ with col1:
                 target_text = extract_from_pdf(uploaded)
                 st.success("PDF Loaded.")
 
-    analyze_btn = st.button("🚀 Run Forensic Scan", type="primary", use_container_width=True)
+    analyze_btn = st.button("🚀 Run Neural Scan", type="primary", use_container_width=True)
 
 with col2:
     st.subheader("2. Forensic Report")
     
     if analyze_btn and target_text:
-        brain = UniversalBrain()
-        
-        with st.spinner("🔍 Scanning for universal hate patterns..."):
-            time.sleep(0.5) 
-            data = brain.analyze(target_text)
+        # Load the brain (First time takes 10-20 seconds to download model)
+        with st.spinner("🧠 Neural Network is processing vectors... (First run may be slow)"):
+            brain = NeuralBrain()
+            scores = brain.analyze(target_text)
             
-        # DYNAMIC COLOR
-        color = "#4CAF50" # Green
-        if data["score"] > 40: color = "#FFA500" # Orange
-        if data["score"] > 75: color = "#FF0000" # Red
+        # --- VISUALIZING THE BRAIN'S OUTPUT ---
         
-        # VERDICT BOX
+        # 1. THE BIG SCORE (Weighted Average)
+        # We calculate a "Danger Score" based on the worst categories
+        danger_score = (
+            scores['identity_hate'] * 100 + 
+            scores['threat'] * 80 + 
+            scores['severe_toxic'] * 60 +
+            scores['toxic'] * 40
+        )
+        final_score = min(int(danger_score), 100)
+        
+        # Color Logic
+        color = "#4CAF50" # Green
+        if final_score > 40: color = "#FFA500" # Orange
+        if final_score > 80: color = "#FF0000" # Red
+
+        # SCORE CARD
         st.markdown(f"""
         <div style="background-color: #0e1117; border-left: 10px solid {color}; border-radius: 5px; padding: 20px; margin-bottom: 20px;">
-            <h2 style="color: {color}; margin:0;">{data['verdict']}</h2>
-            <h1 style="font-size: 3em; margin: 10px 0;">{data['score']}/100</h1>
-            <p style="color: #aaa; text-transform: uppercase; letter-spacing: 1px;">Threat Intensity</p>
+            <h1 style="font-size: 3em; margin: 0; color: {color};">{final_score}/100</h1>
+            <p style="color: #aaa; text-transform: uppercase; letter-spacing: 1px;">Neural Threat Index</p>
         </div>
         """, unsafe_allow_html=True)
         
-        # EXPLANATION
-        st.markdown("### 📝 Analysis")
-        if not data["explanation"]:
-             st.markdown("- No threats detected.")
-        for line in data["explanation"]:
-            st.markdown(f"- {line}")
-            
-        # EVIDENCE GRID
-        st.markdown("---")
-        st.caption("EVIDENCE LOCKER")
+        # 2. DETAILED BREAKDOWN (Bar Chart)
+        # Formatting keys for display
+        labels = list(scores.keys())
+        values = [scores[k] * 100 for k in labels] # Convert 0.9 to 90%
+        colors = ['#ff4b4b' if v > 50 else '#444' for v in values] # Red if high
         
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Dehumanization", len(data["hits"]["DEHUMANIZATION"]))
-        with c2:
-            st.metric("Violence Calls", len(data["hits"]["VIOLENCE_INCITEMENT"]))
-        with c3:
-            st.metric("Group Attacks", len(data["hits"]["GROUP_ATTACK"]))
+        fig = go.Figure(go.Bar(
+            x=values,
+            y=labels,
+            orientation='h',
+            marker_color=colors,
+            text=[f"{v:.1f}%" for v in values],
+            textposition='auto'
+        ))
+        
+        fig.update_layout(
+            title="Toxicity Vector Analysis",
+            xaxis_title="Confidence Level (%)",
+            yaxis_autorange="reversed", # Top to bottom
+            height=400,
+            margin=dict(l=20, r=20, t=40, b=20)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 3. THE VERDICT (Written by Logic)
+        st.subheader("📝 Neural Verdict")
+        
+        top_trigger = max(scores, key=scores.get)
+        
+        if final_score < 20:
+             st.success("✅ **Safe Content:** The model detects no hostile intent or toxicity.")
+        elif scores['identity_hate'] > 0.5:
+            st.error(f"🚨 **HATE SPEECH DETECTED:** The model is {int(scores['identity_hate']*100)}% confident this text attacks a specific group based on religion, race, or identity.")
+        elif scores['threat'] > 0.5:
+             st.error(f"🛑 **VIOLENCE DETECTED:** The model detected a physical threat with {int(scores['threat']*100)}% confidence.")
+        elif scores['toxic'] > 0.8:
+             st.warning("⚠️ **Toxic Behavior:** This text is highly rude, disrespectful, or inflammatory, but may not be hate speech.")
+        else:
+             st.info("⚠️ **Suspicious:** The text has negative undertones but does not cross the line into actionable threats.")
