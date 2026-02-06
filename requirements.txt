@@ -4,3 +4,5 @@ vaderSentiment
 plotly
 pypdf
 trafilatura
+google-generativeai
+
