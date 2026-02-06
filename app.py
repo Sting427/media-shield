@@ -6,8 +6,7 @@ from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import re
 import time
-import requests
-from bs4 import BeautifulSoup
+import trafilatura # The New "Specialist" Scraper
 from pypdf import PdfReader
 
 # --- CLOUD FIX ---
@@ -53,39 +52,30 @@ class GeneralAI:
             return f"Error reading PDF: {e}"
 
     def extract_from_url(self, url):
+        # --- THE TRAFILATURA UPGRADE ---
+        # This replaces the messy BeautifulSoup logic with a specialized extractor
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code != 200: return f"Error: Status {response.status_code}"
+            downloaded = trafilatura.fetch_url(url)
+            if downloaded is None:
+                return "Error: Could not reach the website. It might be blocking bots."
             
-            soup = BeautifulSoup(response.content, 'html.parser')
-            for element in soup(["script", "style", "nav", "footer", "header", "aside", "form", "iframe", "noscript"]):
-                element.extract()
+            # This is the magic line that strips ads, menus, and noise
+            text = trafilatura.extract(downloaded)
             
-            main_content = soup.find('article') or soup.find('main') or soup.find('div', class_=re.compile(r'(content|story|article|body)', re.IGNORECASE))
-            search_area = main_content if main_content else soup
+            if text is None:
+                return "Error: Could not find the main article text."
             
-            paragraphs = search_area.find_all('p')
-            cleaned_lines = [p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 40]
-            
-            final_text = "\n\n".join(cleaned_lines)
-            if len(final_text) < 200: final_text = search_area.get_text(separator="\n")
-            
-            return final_text
+            return text
         except Exception as e:
             return f"Error scraping URL: {str(e)}"
 
     def generate_verdict(self, breakdown, score):
-        """
-        Creates a simple English summary based on the highest categories.
-        """
         if score < 20:
             return "✅ **Safe to Read:** This text appears balanced, neutral, and objective. It relies on facts rather than emotional manipulation."
         
         highest_cat = max(breakdown, key=breakdown.get)
         verdict = ""
         
-        # PRIMARY DIAGNOSIS
         if highest_cat == "EMOTION":
             verdict = "⚠️ **Emotional Manipulation Detected:** This text is trying to bypass your logic by triggering intense feelings like Anger or Fear. "
         elif highest_cat == "PRESSURE":
@@ -93,7 +83,6 @@ class GeneralAI:
         elif highest_cat == "LOGIC":
             verdict = "⚠️ **Logical Fallacies:** This argument is structurally flawed. It uses 'Us vs. Them' tribalism or 'Sunk Cost' traps instead of valid reasoning. "
             
-        # SECONDARY NOTE
         if score > 70:
             verdict += "**Proceed with extreme caution.** The manipulation density is critical."
         elif score > 40:
@@ -105,13 +94,11 @@ class GeneralAI:
         results = {"score": 0, "breakdown": {"EMOTION": 0, "PRESSURE": 0, "LOGIC": 0}, "triggers_found": [], "highlighted_text": text}
         matches = []
         
-        # 1. FIND MATCHES
         for label, data in INTELLIGENCE.items():
             for pattern in data["patterns"]:
                 for match in re.finditer(pattern, text, re.IGNORECASE):
                     matches.append({"start": match.start(), "end": match.end(), "text": match.group(), "label": label, "category": data["category"], "color": data["color"]})
 
-        # 2. RESOLVE OVERLAPS
         matches.sort(key=lambda x: (x["start"], -(x["end"] - x["start"])))
         final_matches = []
         last_end = 0
@@ -122,21 +109,17 @@ class GeneralAI:
                 results["breakdown"][m["category"]] += 1
                 results["triggers_found"].append(m["label"])
 
-        # 3. HIGHLIGHT TEXT
         final_matches.sort(key=lambda x: x["start"], reverse=True)
         for m in final_matches:
             badge = f'<span style="background-color: {m["color"]}33; border-bottom: 2px solid {m["color"]}; border-radius: 4px; padding: 0 2px; font-weight: bold;" title="{m["label"]}">{text[m["start"]:m["end"]]}</span>'
             results["highlighted_text"] = results["highlighted_text"][:m["start"]] + badge + results["highlighted_text"][m["end"]:]
 
-        # 4. SCORE
         score = (results["breakdown"]["EMOTION"] * 10) + (results["breakdown"]["PRESSURE"] * 15) + (results["breakdown"]["LOGIC"] * 20)
         vader = self.vader.polarity_scores(text)
         if abs(vader['compound']) * 100 > 50: score += 15
         results["score"] = min(score, 100)
         
-        # 5. GENERATE VERDICT
         results["verdict"] = self.generate_verdict(results["breakdown"], results["score"])
-        
         return results
 
 # ==========================================
@@ -157,7 +140,7 @@ with tab1:
         if st.button("🚀 Process & Scan", type="primary", use_container_width=True):
             ai = GeneralAI()
             if user_input.strip().startswith("http") or user_input.strip().startswith("www"):
-                with st.spinner("🕷️ Crawling main article (ignoring sidebars)..."):
+                with st.spinner("🕷️ Crawling main article (using Trafilatura Engine)..."):
                     target_url = user_input.strip()
                     if target_url.startswith("www"): target_url = "https://" + target_url
                     scraped_text = ai.extract_from_url(target_url)
@@ -184,14 +167,12 @@ with tab2:
     if st.session_state.get('has_run'):
         data = st.session_state['scan_result']
         
-        # --- NEW VERDICT SECTION ---
         st.markdown(f"""
         <div style="background-color: #262730; padding: 20px; border-radius: 10px; border-left: 5px solid #FF4B4B; margin-bottom: 25px;">
             <h3 style="margin-top:0;">🔎 Forensic Verdict</h3>
             <p style="font-size: 1.1em; margin-bottom: 0;">{data['verdict']}</p>
         </div>
         """, unsafe_allow_html=True)
-        # ---------------------------
 
         score = data['score']
         color = "green"
