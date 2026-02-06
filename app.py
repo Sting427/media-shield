@@ -6,7 +6,9 @@ from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import re
 import time
-from pypdf import PdfReader # New Library for PDFs
+import requests
+from bs4 import BeautifulSoup
+from pypdf import PdfReader
 
 # --- CLOUD FIX ---
 try:
@@ -20,7 +22,7 @@ nltk.download('punkt')
 nltk.download('punkt_tab')
 nltk.download('averaged_perceptron_tagger')
 
-# --- CONFIGURATION (Mobile Optimized) ---
+# --- CONFIGURATION ---
 st.set_page_config(page_title="Media Shield", page_icon="🛡️", layout="centered")
 
 # ==========================================
@@ -49,6 +51,32 @@ class GeneralAI:
             return text
         except Exception as e:
             return f"Error reading PDF: {e}"
+
+    def extract_from_url(self, url):
+        try:
+            # We pretend to be a real browser to avoid getting blocked
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                return f"Error: Failed to retrieve website (Status Code: {response.status_code})"
+                
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Kill javascript and styles
+            for script in soup(["script", "style", "nav", "footer", "header"]):
+                script.extract()
+                
+            text = soup.get_text()
+            
+            # Clean up whitespace
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            clean_text = '\n'.join(chunk for chunk in chunks if chunk)
+            
+            return clean_text
+        except Exception as e:
+            return f"Error scraping URL: {str(e)}"
 
     def scan(self, text):
         results = {"score": 0, "breakdown": {"EMOTION": 0, "PRESSURE": 0, "LOGIC": 0}, "triggers_found": [], "highlighted_text": text}
@@ -90,37 +118,53 @@ class GeneralAI:
 st.title("🛡️ Media Shield")
 st.markdown("**Forensic Intelligence System**")
 
-# TABS for clean mobile navigation
 tab1, tab2, tab3 = st.tabs(["📂 Input", "📊 Analysis", "🚩 Evidence"])
 
 with tab1:
-    st.info("Upload a document or paste text to begin.")
+    st.info("Upload PDF, Paste Text, or Enter URL.")
     
-    # INPUT METHOD SELECTION
-    input_method = st.radio("Source:", ["Paste Text", "Upload PDF"], horizontal=True)
+    input_method = st.radio("Source:", ["Paste Text / URL", "Upload PDF"], horizontal=True)
     
-    raw_text = ""
+    final_text_to_scan = ""
     
-    if input_method == "Paste Text":
-        raw_text = st.text_area("Paste Content:", height=300, placeholder="Paste news article, email, or ad copy...")
+    if input_method == "Paste Text / URL":
+        user_input = st.text_area("Content:", height=200, placeholder="Paste text OR a website link (https://...)")
+        
+        if st.button("🚀 Process & Scan", type="primary", use_container_width=True):
+            ai = GeneralAI()
+            
+            # URL DETECTION LOGIC
+            if user_input.strip().startswith("http") or user_input.strip().startswith("www"):
+                with st.spinner("🕷️ Crawling website content..."):
+                    # Add https if missing
+                    target_url = user_input.strip()
+                    if target_url.startswith("www"): target_url = "https://" + target_url
+                    
+                    scraped_text = ai.extract_from_url(target_url)
+                    
+                    if "Error" in scraped_text:
+                        st.error(scraped_text)
+                    else:
+                        final_text_to_scan = scraped_text
+                        st.success(f"Webpage scraped! Analyzing {len(final_text_to_scan)} characters...")
+            else:
+                final_text_to_scan = user_input
+
     else:
         uploaded_file = st.file_uploader("Choose PDF", type="pdf")
         if uploaded_file is not None:
-            ai = GeneralAI()
-            with st.spinner("Extracting text from PDF..."):
-                raw_text = ai.extract_from_pdf(uploaded_file)
-                st.success(f"Extracted {len(raw_text)} characters.")
+            if st.button("🚀 Process PDF", type="primary", use_container_width=True):
+                ai = GeneralAI()
+                with st.spinner("Extracting text from PDF..."):
+                    final_text_to_scan = ai.extract_from_pdf(uploaded_file)
+                    st.success(f"Extracted {len(final_text_to_scan)} characters.")
 
-    # RUN BUTTON (Big and accessible)
-    if st.button("🚀 Run Forensic Scan", type="primary", use_container_width=True):
-        if len(raw_text) > 10:
-            st.session_state['scan_result'] = GeneralAI().scan(raw_text)
-            st.session_state['has_run'] = True
-            st.toast("Scan Complete! Check the Analysis tab.", icon="✅")
-        else:
-            st.warning("Please provide more text.")
+    # EXECUTE SCAN IF WE HAVE TEXT
+    if final_text_to_scan and len(final_text_to_scan) > 10:
+        st.session_state['scan_result'] = GeneralAI().scan(final_text_to_scan)
+        st.session_state['has_run'] = True
+        st.toast("Scan Complete! Check Analysis tab.", icon="✅")
 
-# ANALYSIS TAB
 with tab2:
     if st.session_state.get('has_run'):
         data = st.session_state['scan_result']
@@ -160,9 +204,8 @@ with tab2:
         c2.metric("Pressure", data["breakdown"]["PRESSURE"])
         c3.metric("Logic", data["breakdown"]["LOGIC"])
     else:
-        st.caption("Run a scan to see the analysis.")
+        st.caption("Waiting for data...")
 
-# EVIDENCE TAB
 with tab3:
     if st.session_state.get('has_run'):
         data = st.session_state['scan_result']
@@ -185,4 +228,4 @@ with tab3:
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.caption("Forensic evidence will appear here.")
+        st.caption("Evidence will appear here.")
