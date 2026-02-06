@@ -186,7 +186,7 @@ if btn and text_input:
     </div>
     """, unsafe_allow_html=True)
     fig = go.Figure()
-        fig.add_trace(go.Scatterpolar(
+    fig.add_trace(go.Scatterpolar(
             r=values,
             theta=categories,
             fill='toself',
@@ -223,5 +223,6 @@ if btn and text_input:
     """, unsafe_allow_html=True)
     
     st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
+
 
 
