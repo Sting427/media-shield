@@ -210,7 +210,7 @@ if btn and text_input:
     c2.metric("Pressure Hits", data["breakdown"]["PRESSURE"])
     c3.metric("Logic Fallacies", data["breakdown"]["LOGIC"])
         
-        st.metric("TOTAL THREAT SCORE", f"{data['score']}/100")
+    st.metric("TOTAL THREAT SCORE", f"{data['score']}/100")
 
     # --- FORENSIC VIEW ---
     st.divider()
@@ -223,6 +223,7 @@ if btn and text_input:
     """, unsafe_allow_html=True)
     
     st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
+
 
 
 
