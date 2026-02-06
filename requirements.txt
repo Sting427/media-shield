@@ -1,8 +1,6 @@
 streamlit
-textblob
-vaderSentiment
-plotly
-pypdf
 trafilatura
-google-generativeai
-
+pypdf
+plotly
+transformers
+torch
