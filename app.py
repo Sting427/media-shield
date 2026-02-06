@@ -202,7 +202,7 @@ if btn and text_input:
             height=300,
             margin=dict(l=40, r=40, t=20, b=20)
         )
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
         
         # METRICS
         c1, c2, c3 = st.columns(3)
@@ -223,6 +223,7 @@ if btn and text_input:
     """, unsafe_allow_html=True)
     
     st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
+
 
 
 
