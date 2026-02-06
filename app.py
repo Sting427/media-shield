@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 import trafilatura
 from pypdf import PdfReader
-import plotly.graph_objects as go
 import time
 
 # --- CONFIGURATION ---
@@ -17,7 +16,6 @@ class GeminiBrain:
         self.model = genai.GenerativeModel('gemini-1.5-flash')
 
     def analyze(self, text):
-        # The "Forensic Prompt" - instructing the AI how to think
         prompt = f"""
         Act as a Forensic Linguist and Counter-Disinformation Analyst. 
         Analyze the following text for:
@@ -27,7 +25,7 @@ class GeminiBrain:
         4. Propaganda Tactics (Bandwagon, False Authority)
 
         TEXT TO ANALYZE:
-        "{text[:3000]}"  # Limit to first 3000 chars to stay fast
+        "{text[:3000]}"
 
         OUTPUT FORMAT:
         Return a clear, human-readable report. 
@@ -38,7 +36,6 @@ class GeminiBrain:
         
         Do not use Markdown for the whole thing, just use bolding for headers. Keep it punchy and professional.
         """
-        
         try:
             response = self.model.generate_content(prompt)
             return response.text
@@ -67,12 +64,18 @@ def extract_from_pdf(file):
 st.title("🧠 Media Shield: Cognitive Defense")
 st.caption("Powered by Gemini 1.5 Flash • Context-Aware Analysis")
 
-# SIDEBAR FOR KEY
+# --- SECRETS MANAGEMENT (The Auto-Login) ---
+# Try to get key from Cloud Secrets first
+api_key = st.secrets.get("GEMINI_API_KEY")
+
+# If no secret is found, fallback to manual entry
 with st.sidebar:
-    st.header("🔑 Activation")
-    api_key = st.text_input("Enter Google Gemini API Key:", type="password", help="Get one for free at aistudio.google.com")
-    st.markdown("---")
-    st.info("This version uses a real AI Brain to understand context, sarcasm, and complex hate speech.")
+    if not api_key:
+        st.header("🔑 Activation")
+        api_key = st.text_input("Enter Google Gemini API Key:", type="password", help="Get one for free at aistudio.google.com")
+    else:
+        st.success("🔐 Secure Link Active")
+        st.caption("Key loaded from Cloud Secrets")
 
 # MAIN INPUT
 col1, col2 = st.columns([1, 1])
@@ -108,7 +111,7 @@ with col2:
     
     if analyze_btn:
         if not api_key:
-            st.error("⚠️ API Key Missing. Please enter your Gemini Key in the sidebar.")
+            st.error("⚠️ API Key Missing. Please check Settings > Secrets.")
         elif not target_text:
             st.warning("Please provide text to analyze.")
         else:
