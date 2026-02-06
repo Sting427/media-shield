@@ -206,7 +206,7 @@ if btn and text_input:
         
         # METRICS
     c1, c2, c3 = st.columns(3)
-        c1.metric("Emotion Hits", data["breakdown"]["EMOTION"])
+    c1.metric("Emotion Hits", data["breakdown"]["EMOTION"])
         c2.metric("Pressure Hits", data["breakdown"]["PRESSURE"])
         c3.metric("Logic Fallacies", data["breakdown"]["LOGIC"])
         
@@ -223,6 +223,7 @@ if btn and text_input:
     """, unsafe_allow_html=True)
     
     st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
+
 
 
 
