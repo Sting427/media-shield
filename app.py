@@ -1,9 +1,13 @@
 import streamlit as st
 import nltk
 import ssl
+import plotly.graph_objects as go
+from textblob import TextBlob
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import re
+import time
 
-# --- CLOUD FIX: AUTO-DOWNLOAD BRAINS ---
-# This forces the cloud computer to download the necessary dictionaries
+# --- CLOUD FIX ---
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -11,152 +15,151 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
-# Download specific NLTK data required by TextBlob
 nltk.download('punkt')
 nltk.download('punkt_tab')
 nltk.download('averaged_perceptron_tagger')
-nltk.download('averaged_perceptron_tagger_eng')
 
-# --- NOW IMPORT THE REST ---
-from textblob import TextBlob
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-import re
-import time
+# --- CONFIGURATION ---
+st.set_page_config(page_title="Media Shield: Forensic Lab", page_icon="🛡️", layout="wide")
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="Media Shield", page_icon="🛡️", layout="wide")
-
-# ==========================================
-# 🧠 INTELLIGENCE DICTIONARIES
-# ==========================================
-VIRAL_TRIGGERS = {
-    "😡 ANGER": ["scandal", "eviscerated", "misogynist", "racist", "censored", "banned", "cover-up", "outrage", "shameful", "hypocrisy", "lies", "attack", "destroy", "victim"],
-    "😱 FEAR": ["toxic", "lethal", "crisis", "collapse", "warning", "danger", "risk", "poison", "meltdown", "apocalypse", "deadly", "threat", "emergency", "fatal"],
-    "😲 SHOCK": ["mind-blowing", "unprecedented", "secret", "genius", "insane", "bizarre", "perfection", "never-before-seen", "shocking", "magic", "stunning", "miracle"],
-    "🔞 NSFW": ["uncensored", "naked", "leaked", "tape", "explicit", "nsfw", "raw", "exposed", "seductive", "forbidden", "nude"]
+# INTELLIGENCE DICTIONARY (Expanded)
+TRIGGERS = {
+    "ANGER": {
+        "color": "#FF4B4B", # Red
+        "words": ["scandal", "eviscerated", "misogynist", "racist", "censored", "banned", "cover-up", "outrage", "shameful", "hypocrisy", "lies", "attack", "destroy", "victim", "furious"]
+    },
+    "FEAR": {
+        "color": "#800080", # Purple
+        "words": ["toxic", "lethal", "crisis", "collapse", "warning", "danger", "risk", "poison", "meltdown", "apocalypse", "deadly", "threat", "emergency", "fatal"]
+    },
+    "SHOCK": {
+        "color": "#FFA500", # Orange
+        "words": ["mind-blowing", "unprecedented", "secret", "genius", "insane", "bizarre", "perfection", "shocking", "magic", "stunning", "miracle", "baffling"]
+    },
+    "WEASEL": {
+        "color": "#808080", # Grey
+        "words": ["reportedly", "supposedly", "purportedly", "sources say", "rumors", "allegedly", "it appears", "some people"]
+    }
 }
 
-WEAK_SOURCES = ["reports are surfacing", "according to a tipster", "we are hearing", "sources tell us", "rumors", "people are saying", "allegedly", "reportedly", "supposedly"]
-
-class MediaShieldScanner:
+class ForensicEngine:
     def __init__(self):
         self.vader = SentimentIntensityAnalyzer()
 
-    def analyze_sentence(self, sentence_obj):
-        text = sentence_obj.string
-        score = 0
-        flags = []
+    def generate_highlighted_text(self, text):
+        """
+        Replaces trigger words with HTML badges.
+        """
+        highlighted = text
+        # Sort words by length (descending) so we don't replace substrings incorrectly
+        all_triggers = []
+        for category, data in TRIGGERS.items():
+            for word in data["words"]:
+                all_triggers.append((word, category, data["color"]))
         
-        # 1. EMOTIONAL INTENSITY (VADER)
-        vader_score = self.vader.polarity_scores(text)
-        intensity = abs(vader_score['compound']) * 100
-        if intensity > 60:
-            score += 30
-            flags.append(f"High Intensity ({int(intensity)}%)")
+        all_triggers.sort(key=lambda x: len(x[0]), reverse=True)
 
-        # 2. SUBJECTIVITY (TextBlob)
-        subj = sentence_obj.sentiment.subjectivity
-        if subj > 0.7:
-            score += 25
-            flags.append(f"High Subjectivity ({int(subj*100)}%)")
+        for word, category, color in all_triggers:
+            # Regex to match whole words, case-insensitive
+            pattern = re.compile(re.escape(word), re.IGNORECASE)
+            # The HTML replacement (Mark tag)
+            replacement = f'<span style="background-color: {color}33; border-bottom: 2px solid {color}; padding: 0 4px; border-radius: 4px; font-weight: bold;" title="{category} Trigger">{word.upper()}</span>'
+            highlighted = pattern.sub(replacement, highlighted)
+            
+        return highlighted
 
-        # 3. VIRAL TRIGGERS
-        for category, keywords in VIRAL_TRIGGERS.items():
-            found = [word for word in keywords if word in text.lower()]
-            if found:
-                score += (len(found) * 20)
-                flags.append(f"{category} Trigger")
-
-        # 4. WEAK SOURCING
-        for phrase in WEAK_SOURCES:
-            if phrase in text.lower():
-                score += 25
-                flags.append("Weak Sourcing")
-
-        return min(score, 100), flags
-
-    def scan_text(self, full_text):
-        blob = TextBlob(full_text)
-        sentences = blob.sentences
-        
-        total_sentences = len(sentences)
-        toxic_sentences = []
-        cumulative_score = 0
-        
-        for i, sent in enumerate(sentences):
-            risk_score, flags = self.analyze_sentence(sent)
-            if risk_score > 40:
-                toxic_sentences.append({
-                    "index": i + 1,
-                    "text": sent.string,
-                    "score": risk_score,
-                    "flags": flags
-                })
-            cumulative_score += risk_score
-
-        if total_sentences < 2:
-            final_score = cumulative_score
-        else:
-            infection_rate = (len(toxic_sentences) / total_sentences) 
-            final_score = min(infection_rate * 250, 100) 
-
-        return {
-            "score": int(final_score),
-            "sentence_count": total_sentences,
-            "toxic_count": len(toxic_sentences),
-            "toxic_list": sorted(toxic_sentences, key=lambda x: x['score'], reverse=True)
+    def analyze(self, text):
+        blob = TextBlob(text)
+        results = {
+            "intensity": 0,
+            "subjectivity": blob.sentiment.subjectivity * 100,
+            "counts": {"ANGER": 0, "FEAR": 0, "SHOCK": 0, "WEASEL": 0},
+            "highlighted_html": self.generate_highlighted_text(text)
         }
 
-# ==========================================
-# 🖥️ UI LAYOUT
-# ==========================================
-st.title("🛡️ Media Shield: Cloud Edition")
-st.caption("Forensic Logic Online • Powered by VADER & TextBlob")
+        # VADER Intensity
+        v_score = self.vader.polarity_scores(text)
+        results["intensity"] = abs(v_score['compound']) * 100
 
-text_input = st.text_area("Paste Article or Headline:", height=200, placeholder="Paste text here to run forensic scan...")
-btn = st.button("Run Forensic Scan", type="primary")
-
-if btn and text_input:
-    scanner = MediaShieldScanner()
-    with st.spinner("Analyzing linguistic patterns..."):
-        time.sleep(0.5)
-        report = scanner.scan_text(text_input)
+        # Trigger Counting
+        text_lower = text.lower()
+        for cat, data in TRIGGERS.items():
+            for word in data["words"]:
+                if word in text_lower:
+                    results["counts"][cat] += 1
         
-    score = report['score']
+        # Final Score Calc
+        base_score = results["intensity"] * 0.5 + results["subjectivity"] * 0.3
+        trigger_penalty = sum(results["counts"].values()) * 5
+        results["final_score"] = min(base_score + trigger_penalty, 100)
+        
+        return results
+
+# --- UI ---
+st.title("🛡️ Media Shield: The Forensic Lab")
+st.markdown("### Visualizing the Anatomy of Manipulation")
+
+col_input, col_viz = st.columns([1, 1])
+
+with col_input:
+    st.subheader("1. Input Source")
+    text_input = st.text_area("Paste Article Here:", height=400, placeholder="Paste text...")
+    run_btn = st.button("🔬 Run Forensic Scan", type="primary")
+
+if run_btn and text_input:
+    engine = ForensicEngine()
+    data = engine.analyze(text_input)
     
-    col1, col2, col3 = st.columns([1, 1, 2])
-    with col1:
-        color = "green"
-        if score > 40: color = "orange"
-        if score > 70: color = "red"
-        st.markdown(f"""
-            <div style="text-align: center; border: 2px solid {color}; padding: 10px; border-radius: 10px;">
-                <h1 style="color:{color}; margin:0;">{score}/100</h1>
-                <p>Infection Score</p>
-            </div>
-        """, unsafe_allow_html=True)
+    with col_viz:
+        st.subheader("2. The Bias Radar")
         
-    with col2:
-        st.metric("Sentences Scanned", report['sentence_count'])
-        st.metric("Toxic Sentences", report['toxic_count'])
+        # RADAR CHART (The "Fingerprint")
+        categories = list(data["counts"].keys())
+        values = list(data["counts"].values())
+        
+        fig = go.Figure(data=go.Scatterpolar(
+            r=values,
+            theta=categories,
+            fill='toself',
+            name='Triggers'
+        ))
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, max(max(values)+1, 5)])),
+            showlegend=False,
+            height=300,
+            margin=dict(l=40, r=40, t=20, b=20)
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    with col3:
-        if score > 70:
-            st.error("🚨 CRITICAL: Heavily saturated with manipulative language.")
-        elif score > 40:
-            st.warning("⚠️ SUSPICIOUS: Contains high levels of subjectivity.")
+        # METRICS
+        m1, m2 = st.columns(2)
+        m1.metric("Manipulation Score", f"{int(data['final_score'])}/100")
+        m2.metric("Subjectivity", f"{int(data['subjectivity'])}%")
+        
+        if data['final_score'] > 70:
+            st.error("🚨 CRITICAL MANIPULATION DETECTED")
+        elif data['final_score'] > 40:
+            st.warning("⚠️ SUSPICIOUS CONTENT")
         else:
-            st.success("✅ CLEAN: Mostly objective reporting.")
+            st.success("✅ CLEAN CONTENT")
 
+    # --- THE HIGHLIGHTER (Full Width) ---
     st.divider()
+    st.subheader("3. X-Ray View (Trigger Visualization)")
+    st.caption("We have highlighted the specific words triggering the forensic filters.")
+    
+    # Render the HTML
+    st.markdown(f"""
+    <div style="padding: 20px; background-color: #0e1117; border: 1px solid #333; border-radius: 10px; line-height: 1.6; font-family: sans-serif;">
+        {data['highlighted_html']}
+    </div>
+    """, unsafe_allow_html=True)
 
-    if report['toxic_list']:
-        st.subheader("🚩 The Evidence Locker")
-        for item in report['toxic_list']:
-            with st.expander(f"Risk {item['score']}%: \"{item['text'][:50]}...\"", expanded=True):
-                st.markdown(f"**Full Text:** *{item['text']}*")
-                for flag in item['flags']:
-                    st.code(flag)
-    else:
-        st.info("No specifically toxic sentences found.")
-        
+    # Legend
+    st.markdown("""
+    <br>
+    <span style="color:#FF4B4B">■ Anger</span> &nbsp; 
+    <span style="color:#800080">■ Fear</span> &nbsp; 
+    <span style="color:#FFA500">■ Shock</span> &nbsp; 
+    <span style="color:#808080">■ Weasel Words</span>
+    """, unsafe_allow_html=True)
