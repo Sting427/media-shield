@@ -194,7 +194,7 @@ if btn and text_input:
             line_color='#FF4B4B'
         ))
         
-        fig.update_layout(
+    fig.update_layout(
             polar=dict(
                 radialaxis=dict(visible=True, range=[0, max(max(values)+1, 5)])
             ),
@@ -223,6 +223,7 @@ if btn and text_input:
     """, unsafe_allow_html=True)
     
     st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
+
 
 
 
