@@ -6,10 +6,10 @@ from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import re
 import time
-import trafilatura # The New "Specialist" Scraper
+import trafilatura # The Specialist Web Scraper
 from pypdf import PdfReader
 
-# --- CLOUD FIX ---
+# --- CLOUD FIX: AUTO-DOWNLOAD BRAINS ---
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -22,19 +22,35 @@ nltk.download('punkt_tab')
 nltk.download('averaged_perceptron_tagger')
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Media Shield", page_icon="🛡️", layout="centered")
+st.set_page_config(page_title="Media Shield: General AI", page_icon="🛡️", layout="centered")
 
 # ==========================================
-# 🧠 INTELLIGENCE DATABASE
+# 🧠 INTELLIGENCE DATABASE (V2: HATE SPEECH EDITION)
 # ==========================================
 INTELLIGENCE = {
+    # --- WING 1: EMOTION ---
     "ANGER": {"color": "#FF4B4B", "category": "EMOTION", "patterns": [r"scandal", r"eviscerated", r"misogynist", r"racist", r"censored", r"banned", r"cover-up", r"outrage", r"shameful", r"hypocrisy", r"lies", r"attack", r"destroy", r"victim", r"furious"]},
     "FEAR": {"color": "#800080", "category": "EMOTION", "patterns": [r"toxic", r"lethal", r"crisis", r"collapse", r"warning", r"danger", r"risk", r"poison", r"meltdown", r"apocalypse", r"deadly", r"threat", r"emergency", r"fatal"]},
+    
+    # --- WING 2: PRESSURE ---
     "SCARCITY": {"color": "#0068C9", "category": "PRESSURE", "patterns": [r"(?i)\bact\s+now\b", r"(?i)\bonly\s+\d+\s+(left|remaining)\b", r"(?i)\bwhile\s+supplies\s+last\b", r"(?i)\boffer\s+expires\b", r"(?i)\btime\s+is\s+running\s+out\b", r"(?i)\blast\s+chance\b", r"(?i)\btoday\s+only\b", r"(?i)\bdeadline\s+approaching\b", r"(?i)\bhurry\b"]},
     "AUTHORITY": {"color": "#00C9A7", "category": "PRESSURE", "patterns": [r"(?i)\b(doctors?|scientists?|experts?)\s+(recommend|say|agree|confirm)\b", r"(?i)\bstudies\s+(show|prove|indicate)\b", r"(?i)\b(leading|top)\s+(authority|expert)\b", r"(?i)\bsecret\s+formula\b", r"(?i)\bscientifically\s+proven\b"]},
     "SOCIAL_PROOF": {"color": "#29B5E8", "category": "PRESSURE", "patterns": [r"(?i)\bjoin\s+(over\s+)?[\d,.]+\s+(people|users)\b", r"(?i)\b(best|top)[- ]?selling\b", r"(?i)\beveryone\s+is\s+(buying|using)\b", r"(?i)\b(thousands|millions)\s+of\s+satisfied\b"]},
-    "US_VS_THEM": {"color": "#FF8C00", "category": "LOGIC", "patterns": [r"those people", r"the radical", r"unlike us", r"they want to", r"they hate", r"the enemy", r"anti-American", r"foreigners", r"outsiders", r"destroy our values", r"threat to our way of life"]},
-    "SUNK_COST": {"color": "#8D6E63", "category": "LOGIC", "patterns": [r"we have already invested", r"too late to turn back", r"invested too much", r"can't stop now", r"finish what we started", r"waste of time if we stop", r"already spent"]}
+    
+    # --- WING 3: LOGIC ---
+    "US_VS_THEM": {"color": "#FF8C00", "category": "LOGIC", "patterns": [r"those people", r"the radical", r"unlike us", r"they want to", r"they hate", r"the enemy", r"anti-American", r"foreigners", r"outsiders", r"destroy our values", r"threat to our way of life", r"cult", r"jihadis?", r"barbaric"]},
+    "SUNK_COST": {"color": "#8D6E63", "category": "LOGIC", "patterns": [r"we have already invested", r"too late to turn back", r"invested too much", r"can't stop now", r"finish what we started", r"waste of time if we stop", r"already spent"]},
+    
+    # --- WING 4: HATE & DEHUMANIZATION (The New Patch) ---
+    "DEHUMANIZATION": {
+        "color": "#000000", # BLACK for heavy hate speech
+        "category": "HATE", 
+        "patterns": [
+            r"cancer", r"virus", r"vermin", r"infest", r"plague", r"filth", r"animals?", r"savages?", 
+            r"elimination", r"eradicate", r"wipe out", r"cleansing", r"loot", r"rape", r"slave", 
+            r"laundia", r"maal" # Specific context words from the user's example
+        ]
+    }
 }
 
 class GeneralAI:
@@ -52,14 +68,12 @@ class GeneralAI:
             return f"Error reading PDF: {e}"
 
     def extract_from_url(self, url):
-        # --- THE TRAFILATURA UPGRADE ---
-        # This replaces the messy BeautifulSoup logic with a specialized extractor
+        # --- TRAFILATURA ENGINE ---
         try:
             downloaded = trafilatura.fetch_url(url)
             if downloaded is None:
                 return "Error: Could not reach the website. It might be blocking bots."
             
-            # This is the magic line that strips ads, menus, and noise
             text = trafilatura.extract(downloaded)
             
             if text is None:
@@ -76,13 +90,17 @@ class GeneralAI:
         highest_cat = max(breakdown, key=breakdown.get)
         verdict = ""
         
-        if highest_cat == "EMOTION":
-            verdict = "⚠️ **Emotional Manipulation Detected:** This text is trying to bypass your logic by triggering intense feelings like Anger or Fear. "
+        # PRIMARY DIAGNOSIS
+        if highest_cat == "HATE":
+             verdict = "🚨 **HATE SPEECH DETECTED:** This text contains dehumanizing language ('cancer', 'vermin', 'elimination') often used to incite violence against specific groups. "
+        elif highest_cat == "EMOTION":
+            verdict = "⚠️ **Emotional Manipulation:** This text attempts to bypass logic by triggering intense feelings like Anger or Fear. "
         elif highest_cat == "PRESSURE":
-            verdict = "⚠️ **High Pressure Tactics:** The author is creating artificial urgency or relying on vague 'experts' to force you into a quick decision. "
+            verdict = "⚠️ **High Pressure Tactics:** The author creates artificial urgency or relies on vague 'experts' to force a reaction. "
         elif highest_cat == "LOGIC":
-            verdict = "⚠️ **Logical Fallacies:** This argument is structurally flawed. It uses 'Us vs. Them' tribalism or 'Sunk Cost' traps instead of valid reasoning. "
+            verdict = "⚠️ **Logical Fallacies:** This argument relies on 'Us vs. Them' tribalism or 'Sunk Cost' traps rather than facts. "
             
+        # SEVERITY NOTE
         if score > 70:
             verdict += "**Proceed with extreme caution.** The manipulation density is critical."
         elif score > 40:
@@ -91,14 +109,16 @@ class GeneralAI:
         return verdict
 
     def scan(self, text):
-        results = {"score": 0, "breakdown": {"EMOTION": 0, "PRESSURE": 0, "LOGIC": 0}, "triggers_found": [], "highlighted_text": text}
+        results = {"score": 0, "breakdown": {"EMOTION": 0, "PRESSURE": 0, "LOGIC": 0, "HATE": 0}, "triggers_found": [], "highlighted_text": text}
         matches = []
         
+        # 1. FIND MATCHES
         for label, data in INTELLIGENCE.items():
             for pattern in data["patterns"]:
                 for match in re.finditer(pattern, text, re.IGNORECASE):
                     matches.append({"start": match.start(), "end": match.end(), "text": match.group(), "label": label, "category": data["category"], "color": data["color"]})
 
+        # 2. RESOLVE OVERLAPS
         matches.sort(key=lambda x: (x["start"], -(x["end"] - x["start"])))
         final_matches = []
         last_end = 0
@@ -109,17 +129,25 @@ class GeneralAI:
                 results["breakdown"][m["category"]] += 1
                 results["triggers_found"].append(m["label"])
 
+        # 3. HIGHLIGHT TEXT
         final_matches.sort(key=lambda x: x["start"], reverse=True)
         for m in final_matches:
             badge = f'<span style="background-color: {m["color"]}33; border-bottom: 2px solid {m["color"]}; border-radius: 4px; padding: 0 2px; font-weight: bold;" title="{m["label"]}">{text[m["start"]:m["end"]]}</span>'
             results["highlighted_text"] = results["highlighted_text"][:m["start"]] + badge + results["highlighted_text"][m["end"]:]
 
-        score = (results["breakdown"]["EMOTION"] * 10) + (results["breakdown"]["PRESSURE"] * 15) + (results["breakdown"]["LOGIC"] * 20)
+        # 4. SCORE CALCULATION
+        score = (results["breakdown"]["EMOTION"] * 10) + \
+                (results["breakdown"]["PRESSURE"] * 15) + \
+                (results["breakdown"]["LOGIC"] * 20) + \
+                (results["breakdown"]["HATE"] * 30) # Heavy penalty for hate speech
+        
         vader = self.vader.polarity_scores(text)
         if abs(vader['compound']) * 100 > 50: score += 15
         results["score"] = min(score, 100)
         
+        # 5. GENERATE VERDICT
         results["verdict"] = self.generate_verdict(results["breakdown"], results["score"])
+        
         return results
 
 # ==========================================
@@ -140,7 +168,7 @@ with tab1:
         if st.button("🚀 Process & Scan", type="primary", use_container_width=True):
             ai = GeneralAI()
             if user_input.strip().startswith("http") or user_input.strip().startswith("www"):
-                with st.spinner("🕷️ Crawling main article (using Trafilatura Engine)..."):
+                with st.spinner("🕷️ Crawling main article (using Trafilatura)..."):
                     target_url = user_input.strip()
                     if target_url.startswith("www"): target_url = "https://" + target_url
                     scraped_text = ai.extract_from_url(target_url)
@@ -167,8 +195,14 @@ with tab2:
     if st.session_state.get('has_run'):
         data = st.session_state['scan_result']
         
+        # --- VERDICT SECTION ---
+        # Dynamic color for Verdict Box based on severity
+        v_color = "#FF4B4B" # Default Red
+        if "HATE" in data['verdict']: v_color = "#000000" # Black for Hate
+        elif "Safe" in data['verdict']: v_color = "#4CAF50" # Green for Safe
+
         st.markdown(f"""
-        <div style="background-color: #262730; padding: 20px; border-radius: 10px; border-left: 5px solid #FF4B4B; margin-bottom: 25px;">
+        <div style="background-color: #262730; padding: 20px; border-radius: 10px; border-left: 5px solid {v_color}; margin-bottom: 25px;">
             <h3 style="margin-top:0;">🔎 Forensic Verdict</h3>
             <p style="font-size: 1.1em; margin-bottom: 0;">{data['verdict']}</p>
         </div>
@@ -190,10 +224,17 @@ with tab2:
             """, unsafe_allow_html=True)
         
         with c_chart:
-            categories = ["EMOTION", "PRESSURE", "LOGIC"]
-            values = [data["breakdown"]["EMOTION"], data["breakdown"]["PRESSURE"], data["breakdown"]["LOGIC"]]
+            # UPDATED RADAR CHART WITH 4 AXES
+            categories = ["EMOTION", "PRESSURE", "LOGIC", "HATE"]
+            values = [
+                data["breakdown"]["EMOTION"], 
+                data["breakdown"]["PRESSURE"], 
+                data["breakdown"]["LOGIC"],
+                data["breakdown"]["HATE"]
+            ]
             values += [values[0]]
             categories += [categories[0]]
+            
             fig = go.Figure()
             fig.add_trace(go.Scatterpolar(r=values, theta=categories, fill='toself', line_color='#FF4B4B'))
             fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, max(max(values)+1, 5)])), showlegend=False, height=200, margin=dict(l=30, r=30, t=10, b=10))
@@ -206,6 +247,19 @@ with tab3:
     if st.session_state.get('has_run'):
         data = st.session_state['scan_result']
         st.markdown(f"""<div style="padding: 15px; background-color: #0e1117; border: 1px solid #444; border-radius: 5px; font-family: sans-serif; line-height: 1.6; font-size: 0.9em;">{data['highlighted_text']}</div>""", unsafe_allow_html=True)
-        st.markdown("""<div style="margin-top: 20px; font-size: 0.8em; color: #888;"><span style="color:#FF4B4B">■ Anger</span> &nbsp; <span style="color:#800080">■ Fear</span> &nbsp; <span style="color:#0068C9">■ Urgency</span> &nbsp; <span style="color:#00C9A7">■ Authority</span> &nbsp; <span style="color:#29B5E8">■ Social Proof</span> &nbsp; <span style="color:#FF8C00">■ Tribalism</span> &nbsp; <span style="color:#8D6E63">■ Sunk Cost</span></div>""", unsafe_allow_html=True)
+        
+        # UPDATED LEGEND
+        st.markdown("""
+        <div style="margin-top: 20px; font-size: 0.8em; color: #888;">
+            <span style="color:#FF4B4B">■ Anger</span> &nbsp; 
+            <span style="color:#800080">■ Fear</span> &nbsp;
+            <span style="color:#0068C9">■ Urgency</span> &nbsp;
+            <span style="color:#00C9A7">■ Authority</span> &nbsp;
+            <span style="color:#29B5E8">■ Social Proof</span> &nbsp;
+            <span style="color:#FF8C00">■ Tribalism</span> &nbsp;
+            <span style="color:#8D6E63">■ Sunk Cost</span> &nbsp;
+            <span style="color:#ffffff; background-color: #000000; padding: 0 4px;">■ HATE / DEHUMANIZATION</span>
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.caption("Evidence will appear here.")
