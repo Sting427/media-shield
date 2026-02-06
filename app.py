@@ -13,7 +13,7 @@ st.set_page_config(page_title="Media Shield: AI Core", page_icon="🧠", layout=
 class GeminiBrain:
     def __init__(self, api_key):
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        self.model = genai.GenerativeModel('gemini-pro')
     def analyze(self, text):
         prompt = f"""
         Act as a Forensic Linguist and Counter-Disinformation Analyst. 
@@ -129,4 +129,5 @@ with col2:
             """, unsafe_allow_html=True)
             
             st.caption(f"Analysis completed in {round(end_time - start_time, 2)} seconds.")
+
 
