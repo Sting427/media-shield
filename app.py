@@ -11,12 +11,11 @@ st.set_page_config(page_title="Media Shield: Neural Core", page_icon="🧠", lay
 # ==========================================
 # 🧠 THE NEURAL ENGINE (BERT)
 # ==========================================
-# This downloads a real AI model trained on Wikipedia comments.
-# It understands CONTEXT, not just keywords.
 @st.cache_resource
 def load_brain():
-    # We use 'unitary/toxic-bert' - the Gold Standard for hate speech detection
-    classifier = pipeline("text-classification", model="unitary/toxic-bert", return_all_scores=True)
+    # 'top_k=None' forces it to return ALL scores (toxic, threat, insult, etc.)
+    # We use CPU (-1) to be compatible with Free Cloud servers
+    classifier = pipeline("text-classification", model="unitary/toxic-bert", top_k=None)
     return classifier
 
 class NeuralBrain:
@@ -24,13 +23,33 @@ class NeuralBrain:
         self.classifier = load_brain()
 
     def analyze(self, text):
-        # Truncate to 512 tokens (BERT limit) for speed
-        results = self.classifier(text[:2000]) 
-        
-        # The model returns a list of dictionaries: [{'label': 'toxic', 'score': 0.9}, ...]
-        scores = {item['label']: item['score'] for item in results[0]}
-        
-        return scores
+        try:
+            # Truncate to 512 chars to prevent crashing on long text
+            # (BERT has a hard limit and can crash RAM if too long)
+            results = self.classifier(text[:1500])
+            
+            # --- ROBUST DATA PARSING ---
+            # The model output shape changes based on version. We handle both.
+            # Shape A: [[{'label': 'toxic', 'score': 0.9}, ...]] (Nested List)
+            # Shape B: [{'label': 'toxic', 'score': 0.9}, ...] (Flat List)
+            
+            if isinstance(results, list) and len(results) > 0:
+                if isinstance(results[0], list):
+                    # It's Shape A (Nested) -> Unwrap it
+                    data = results[0]
+                else:
+                    # It's Shape B (Flat) -> Use as is
+                    data = results
+            else:
+                return None
+
+            # Convert to simple dictionary: {'toxic': 0.98, 'insult': 0.5, ...}
+            scores = {item['label']: item['score'] for item in data}
+            return scores
+            
+        except Exception as e:
+            st.error(f"Neural Engine Error: {str(e)}")
+            return None
 
 # ==========================================
 # 🛠️ HELPER FUNCTIONS
@@ -86,71 +105,68 @@ with col2:
     
     if analyze_btn and target_text:
         # Load the brain (First time takes 10-20 seconds to download model)
-        with st.spinner("🧠 Neural Network is processing vectors... (First run may be slow)"):
+        with st.spinner("🧠 Neural Network is processing vectors... (First run takes 30s)"):
             brain = NeuralBrain()
             scores = brain.analyze(target_text)
             
-        # --- VISUALIZING THE BRAIN'S OUTPUT ---
-        
-        # 1. THE BIG SCORE (Weighted Average)
-        # We calculate a "Danger Score" based on the worst categories
-        danger_score = (
-            scores['identity_hate'] * 100 + 
-            scores['threat'] * 80 + 
-            scores['severe_toxic'] * 60 +
-            scores['toxic'] * 40
-        )
-        final_score = min(int(danger_score), 100)
-        
-        # Color Logic
-        color = "#4CAF50" # Green
-        if final_score > 40: color = "#FFA500" # Orange
-        if final_score > 80: color = "#FF0000" # Red
+        if scores:
+            # --- VISUALIZING THE BRAIN'S OUTPUT ---
+            
+            # 1. THE BIG SCORE (Weighted Average)
+            danger_score = (
+                scores.get('identity_hate', 0) * 100 + 
+                scores.get('threat', 0) * 80 + 
+                scores.get('severe_toxic', 0) * 60 +
+                scores.get('toxic', 0) * 40
+            )
+            final_score = min(int(danger_score), 100)
+            
+            # Color Logic
+            color = "#4CAF50" # Green
+            if final_score > 40: color = "#FFA500" # Orange
+            if final_score > 80: color = "#FF0000" # Red
 
-        # SCORE CARD
-        st.markdown(f"""
-        <div style="background-color: #0e1117; border-left: 10px solid {color}; border-radius: 5px; padding: 20px; margin-bottom: 20px;">
-            <h1 style="font-size: 3em; margin: 0; color: {color};">{final_score}/100</h1>
-            <p style="color: #aaa; text-transform: uppercase; letter-spacing: 1px;">Neural Threat Index</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 2. DETAILED BREAKDOWN (Bar Chart)
-        # Formatting keys for display
-        labels = list(scores.keys())
-        values = [scores[k] * 100 for k in labels] # Convert 0.9 to 90%
-        colors = ['#ff4b4b' if v > 50 else '#444' for v in values] # Red if high
-        
-        fig = go.Figure(go.Bar(
-            x=values,
-            y=labels,
-            orientation='h',
-            marker_color=colors,
-            text=[f"{v:.1f}%" for v in values],
-            textposition='auto'
-        ))
-        
-        fig.update_layout(
-            title="Toxicity Vector Analysis",
-            xaxis_title="Confidence Level (%)",
-            yaxis_autorange="reversed", # Top to bottom
-            height=400,
-            margin=dict(l=20, r=20, t=40, b=20)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # 3. THE VERDICT (Written by Logic)
-        st.subheader("📝 Neural Verdict")
-        
-        top_trigger = max(scores, key=scores.get)
-        
-        if final_score < 20:
-             st.success("✅ **Safe Content:** The model detects no hostile intent or toxicity.")
-        elif scores['identity_hate'] > 0.5:
-            st.error(f"🚨 **HATE SPEECH DETECTED:** The model is {int(scores['identity_hate']*100)}% confident this text attacks a specific group based on religion, race, or identity.")
-        elif scores['threat'] > 0.5:
-             st.error(f"🛑 **VIOLENCE DETECTED:** The model detected a physical threat with {int(scores['threat']*100)}% confidence.")
-        elif scores['toxic'] > 0.8:
-             st.warning("⚠️ **Toxic Behavior:** This text is highly rude, disrespectful, or inflammatory, but may not be hate speech.")
-        else:
-             st.info("⚠️ **Suspicious:** The text has negative undertones but does not cross the line into actionable threats.")
+            # SCORE CARD
+            st.markdown(f"""
+            <div style="background-color: #0e1117; border-left: 10px solid {color}; border-radius: 5px; padding: 20px; margin-bottom: 20px;">
+                <h1 style="font-size: 3em; margin: 0; color: {color};">{final_score}/100</h1>
+                <p style="color: #aaa; text-transform: uppercase; letter-spacing: 1px;">Neural Threat Index</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 2. DETAILED BREAKDOWN (Bar Chart)
+            labels = list(scores.keys())
+            values = [scores[k] * 100 for k in labels]
+            colors = ['#ff4b4b' if v > 50 else '#444' for v in values]
+            
+            fig = go.Figure(go.Bar(
+                x=values,
+                y=labels,
+                orientation='h',
+                marker_color=colors,
+                text=[f"{v:.1f}%" for v in values],
+                textposition='auto'
+            ))
+            
+            fig.update_layout(
+                title="Toxicity Vector Analysis",
+                xaxis_title="Confidence Level (%)",
+                yaxis_autorange="reversed",
+                height=400,
+                margin=dict(l=20, r=20, t=40, b=20)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # 3. THE VERDICT
+            st.subheader("📝 Neural Verdict")
+            
+            if final_score < 20:
+                 st.success("✅ **Safe Content:** The model detects no hostile intent or toxicity.")
+            elif scores.get('identity_hate', 0) > 0.5:
+                st.error(f"🚨 **HATE SPEECH DETECTED:** The model is {int(scores['identity_hate']*100)}% confident this text attacks a specific group.")
+            elif scores.get('threat', 0) > 0.5:
+                 st.error(f"🛑 **VIOLENCE DETECTED:** The model detected a physical threat with {int(scores['threat']*100)}% confidence.")
+            elif scores.get('toxic', 0) > 0.8:
+                 st.warning("⚠️ **Toxic Behavior:** This text is highly rude, disrespectful, or inflammatory.")
+            else:
+                 st.info("⚠️ **Suspicious:** The text has negative undertones but does not cross the line into actionable threats.")
