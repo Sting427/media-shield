@@ -3,5 +3,4 @@ textblob
 vaderSentiment
 plotly
 pypdf
-requests
-beautifulsoup4
+trafilatura
