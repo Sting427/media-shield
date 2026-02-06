@@ -20,146 +20,201 @@ nltk.download('punkt_tab')
 nltk.download('averaged_perceptron_tagger')
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Media Shield: Forensic Lab", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Media Shield: General AI", page_icon="🛡️", layout="wide")
 
-# INTELLIGENCE DICTIONARY (Expanded)
-TRIGGERS = {
+# ==========================================
+# 🧠 THE "GENERAL AI" DATABASE
+# ==========================================
+# Combining Holiday (Emotion), Cialdini (Pressure), and Dobelli (Logic)
+
+INTELLIGENCE = {
+    # --- WING 1: EMOTION (Ryan Holiday) ---
     "ANGER": {
         "color": "#FF4B4B", # Red
-        "words": ["scandal", "eviscerated", "misogynist", "racist", "censored", "banned", "cover-up", "outrage", "shameful", "hypocrisy", "lies", "attack", "destroy", "victim", "furious"]
+        "category": "EMOTION",
+        "patterns": [r"scandal", r"eviscerated", r"misogynist", r"racist", r"censored", r"banned", r"cover-up", r"outrage", r"shameful", r"hypocrisy", r"lies", r"attack", r"destroy", r"victim", r"furious"]
     },
     "FEAR": {
         "color": "#800080", # Purple
-        "words": ["toxic", "lethal", "crisis", "collapse", "warning", "danger", "risk", "poison", "meltdown", "apocalypse", "deadly", "threat", "emergency", "fatal"]
+        "category": "EMOTION",
+        "patterns": [r"toxic", r"lethal", r"crisis", r"collapse", r"warning", r"danger", r"risk", r"poison", r"meltdown", r"apocalypse", r"deadly", r"threat", r"emergency", r"fatal"]
     },
-    "SHOCK": {
-        "color": "#FFA500", # Orange
-        "words": ["mind-blowing", "unprecedented", "secret", "genius", "insane", "bizarre", "perfection", "shocking", "magic", "stunning", "miracle", "baffling"]
+    
+    # --- WING 2: PRESSURE (Robert Cialdini) ---
+    "SCARCITY": {
+        "color": "#0068C9", # Blue
+        "category": "PRESSURE",
+        "patterns": [
+            r"(?i)\bact\s+now\b", r"(?i)\bonly\s+\d+\s+(left|remaining)\b", r"(?i)\bwhile\s+supplies\s+last\b", 
+            r"(?i)\boffer\s+expires\b", r"(?i)\btime\s+is\s+running\s+out\b", r"(?i)\blast\s+chance\b", 
+            r"(?i)\btoday\s+only\b", r"(?i)\bdeadline\s+approaching\b", r"(?i)\bhurry\b", r"(?i)\bflash\s+sale\b"
+        ]
     },
-    "WEASEL": {
-        "color": "#808080", # Grey
-        "words": ["reportedly", "supposedly", "purportedly", "sources say", "rumors", "allegedly", "it appears", "some people"]
+    "AUTHORITY": {
+        "color": "#00C9A7", # Teal
+        "category": "PRESSURE",
+        "patterns": [
+            r"(?i)\b(doctors?|scientists?|experts?)\s+(recommend|say|agree|confirm)\b", r"(?i)\bstudies\s+(show|prove|indicate)\b", 
+            r"(?i)\b(leading|top)\s+(authority|expert)\b", r"(?i)\bsecret\s+formula\b", r"(?i)\bscientifically\s+proven\b"
+        ]
+    },
+    "SOCIAL_PROOF": {
+        "color": "#29B5E8", # Light Blue
+        "category": "PRESSURE",
+        "patterns": [
+            r"(?i)\bjoin\s+(over\s+)?[\d,.]+\s+(people|users)\b", r"(?i)\b(best|top)[- ]?selling\b", 
+            r"(?i)\beveryone\s+is\s+(buying|using)\b", r"(?i)\b(thousands|millions)\s+of\s+satisfied\b", r"(?i)\b#1\s+rated\b"
+        ]
+    },
+
+    # --- WING 3: LOGIC (Rolf Dobelli) ---
+    "US_VS_THEM": {
+        "color": "#FF8C00", # Dark Orange
+        "category": "LOGIC",
+        "patterns": [
+            r"those people", r"the radical", r"unlike us", r"they want to", r"they hate", r"the enemy", 
+            r"anti-American", r"foreigners", r"outsiders", r"destroy our values", r"threat to our way of life"
+        ]
+    },
+    "SUNK_COST": {
+        "color": "#8D6E63", # Brown
+        "category": "LOGIC",
+        "patterns": [
+            r"we have already invested", r"too late to turn back", r"invested too much", r"can't stop now", 
+            r"finish what we started", r"waste of time if we stop", r"already spent"
+        ]
     }
 }
 
-class ForensicEngine:
+class GeneralAI:
     def __init__(self):
         self.vader = SentimentIntensityAnalyzer()
 
-    def generate_highlighted_text(self, text):
-        """
-        Replaces trigger words with HTML badges.
-        """
-        highlighted = text
-        # Sort words by length (descending) so we don't replace substrings incorrectly
-        all_triggers = []
-        for category, data in TRIGGERS.items():
-            for word in data["words"]:
-                all_triggers.append((word, category, data["color"]))
-        
-        all_triggers.sort(key=lambda x: len(x[0]), reverse=True)
-
-        for word, category, color in all_triggers:
-            # Regex to match whole words, case-insensitive
-            pattern = re.compile(re.escape(word), re.IGNORECASE)
-            # The HTML replacement (Mark tag)
-            replacement = f'<span style="background-color: {color}33; border-bottom: 2px solid {color}; padding: 0 4px; border-radius: 4px; font-weight: bold;" title="{category} Trigger">{word.upper()}</span>'
-            highlighted = pattern.sub(replacement, highlighted)
-            
-        return highlighted
-
-    def analyze(self, text):
-        blob = TextBlob(text)
+    def scan(self, text):
         results = {
-            "intensity": 0,
-            "subjectivity": blob.sentiment.subjectivity * 100,
-            "counts": {"ANGER": 0, "FEAR": 0, "SHOCK": 0, "WEASEL": 0},
-            "highlighted_html": self.generate_highlighted_text(text)
+            "score": 0,
+            "breakdown": {"EMOTION": 0, "PRESSURE": 0, "LOGIC": 0},
+            "triggers_found": [],
+            "highlighted_text": text
         }
 
-        # VADER Intensity
-        v_score = self.vader.polarity_scores(text)
-        results["intensity"] = abs(v_score['compound']) * 100
+        # 1. PREPARE PATTERNS
+        # We process text to find matches for highlighting and counting
+        matches = []
+        for label, data in INTELLIGENCE.items():
+            for pattern in data["patterns"]:
+                # Find all matches for this pattern
+                # We use regex to find the span (start, end) of the match
+                for match in re.finditer(pattern, text, re.IGNORECASE):
+                    matches.append({
+                        "start": match.start(),
+                        "end": match.end(),
+                        "text": match.group(),
+                        "label": label,
+                        "category": data["category"],
+                        "color": data["color"]
+                    })
 
-        # Trigger Counting
-        text_lower = text.lower()
-        for cat, data in TRIGGERS.items():
-            for word in data["words"]:
-                if word in text_lower:
-                    results["counts"][cat] += 1
+        # 2. RESOLVE OVERLAPS (Longer matches take precedence)
+        # e.g., "Act now" vs "Act" -> Keep "Act now"
+        matches.sort(key=lambda x: (x["start"], -(x["end"] - x["start"])))
+        final_matches = []
+        last_end = 0
         
-        # Final Score Calc
-        base_score = results["intensity"] * 0.5 + results["subjectivity"] * 0.3
-        trigger_penalty = sum(results["counts"].values()) * 5
-        results["final_score"] = min(base_score + trigger_penalty, 100)
+        for m in matches:
+            if m["start"] >= last_end:
+                final_matches.append(m)
+                last_end = m["end"]
+                
+                # Add to Score & Breakdown
+                results["breakdown"][m["category"]] += 1
+                results["triggers_found"].append(m["label"])
+
+        # 3. HIGHLIGHT TEXT (Rebuild string with HTML)
+        # We work backwards so index positions don't shift
+        final_matches.sort(key=lambda x: x["start"], reverse=True)
+        for m in final_matches:
+            badge = f'<span style="background-color: {m["color"]}33; border-bottom: 2px solid {m["color"]}; border-radius: 4px; padding: 0 2px; font-weight: bold;" title="{m["label"]} ({m["category"]})">{text[m["start"]:m["end"]]}</span>'
+            results["highlighted_text"] = results["highlighted_text"][:m["start"]] + badge + results["highlighted_text"][m["end"]:]
+
+        # 4. CALCULATE FINAL SCORE
+        # Emotion = 10pts, Pressure = 15pts, Logic Fallacy = 20pts (Logic errors are heaviest)
+        score = 0
+        score += results["breakdown"]["EMOTION"] * 10
+        score += results["breakdown"]["PRESSURE"] * 15
+        score += results["breakdown"]["LOGIC"] * 20
         
+        # Add VADER Intensity
+        vader = self.vader.polarity_scores(text)
+        intensity = abs(vader['compound']) * 100
+        if intensity > 50: score += 15
+
+        results["score"] = min(score, 100)
         return results
 
-# --- UI ---
-st.title("🛡️ Media Shield: The Forensic Lab")
-st.markdown("### Visualizing the Anatomy of Manipulation")
+# ==========================================
+# 🖥️ THE DASHBOARD
+# ==========================================
+st.title("🛡️ Media Shield: General AI Edition")
+st.markdown("### The Unified Defense System (Emotion + Pressure + Logic)")
 
-col_input, col_viz = st.columns([1, 1])
+col1, col2 = st.columns([1, 1])
 
-with col_input:
-    st.subheader("1. Input Source")
-    text_input = st.text_area("Paste Article Here:", height=400, placeholder="Paste text...")
-    run_btn = st.button("🔬 Run Forensic Scan", type="primary")
+with col1:
+    st.subheader("1. Input Stream")
+    text_input = st.text_area("Paste Article / Ad Copy / Manifesto:", height=350, placeholder="Paste text here...")
+    btn = st.button("🧠 Run General AI Scan", type="primary")
 
-if run_btn and text_input:
-    engine = ForensicEngine()
-    data = engine.analyze(text_input)
+if btn and text_input:
+    ai = GeneralAI()
+    data = ai.scan(text_input)
     
-    with col_viz:
-        st.subheader("2. The Bias Radar")
+    with col2:
+        st.subheader("2. Cognitive Attack Surface")
         
-        # RADAR CHART (The "Fingerprint")
-        categories = list(data["counts"].keys())
-        values = list(data["counts"].values())
+        # RADAR CHART (3 WINGS)
+        categories = ["EMOTION (Holiday)", "PRESSURE (Cialdini)", "LOGIC (Dobelli)"]
+        values = [data["breakdown"]["EMOTION"], data["breakdown"]["PRESSURE"], data["breakdown"]["LOGIC"]]
         
-        fig = go.Figure(data=go.Scatterpolar(
+        # Close the loop for radar chart
+        values += [values[0]]
+        categories += [categories[0]]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatterpolar(
             r=values,
             theta=categories,
             fill='toself',
-            name='Triggers'
+            name='Attack Intensity',
+            line_color='#FF4B4B'
         ))
+        
         fig.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, max(max(values)+1, 5)])),
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, max(max(values)+1, 5)])
+            ),
             showlegend=False,
             height=300,
             margin=dict(l=40, r=40, t=20, b=20)
         )
         st.plotly_chart(fig, use_container_width=True)
-
-        # METRICS
-        m1, m2 = st.columns(2)
-        m1.metric("Manipulation Score", f"{int(data['final_score'])}/100")
-        m2.metric("Subjectivity", f"{int(data['subjectivity'])}%")
         
-        if data['final_score'] > 70:
-            st.error("🚨 CRITICAL MANIPULATION DETECTED")
-        elif data['final_score'] > 40:
-            st.warning("⚠️ SUSPICIOUS CONTENT")
-        else:
-            st.success("✅ CLEAN CONTENT")
+        # METRICS
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Emotion Hits", data["breakdown"]["EMOTION"])
+        c2.metric("Pressure Hits", data["breakdown"]["PRESSURE"])
+        c3.metric("Logic Fallacies", data["breakdown"]["LOGIC"])
+        
+        st.metric("TOTAL THREAT SCORE", f"{data['score']}/100")
 
-    # --- THE HIGHLIGHTER (Full Width) ---
+    # --- FORENSIC VIEW ---
     st.divider()
-    st.subheader("3. X-Ray View (Trigger Visualization)")
-    st.caption("We have highlighted the specific words triggering the forensic filters.")
+    st.subheader("3. Forensic X-Ray (Visual Proof)")
     
-    # Render the HTML
     st.markdown(f"""
-    <div style="padding: 20px; background-color: #0e1117; border: 1px solid #333; border-radius: 10px; line-height: 1.6; font-family: sans-serif;">
-        {data['highlighted_html']}
+    <div style="padding: 20px; background-color: #0e1117; border: 1px solid #444; border-radius: 10px; font-family: sans-serif; line-height: 1.6;">
+        {data['highlighted_text']}
     </div>
     """, unsafe_allow_html=True)
-
-    # Legend
-    st.markdown("""
-    <br>
-    <span style="color:#FF4B4B">■ Anger</span> &nbsp; 
-    <span style="color:#800080">■ Fear</span> &nbsp; 
-    <span style="color:#FFA500">■ Shock</span> &nbsp; 
-    <span style="color:#808080">■ Weasel Words</span>
-    """, unsafe_allow_html=True)
+    
+    st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
