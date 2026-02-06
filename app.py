@@ -8,97 +8,107 @@ from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Media Shield: Forensic Core", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Media Shield: Universal Core", page_icon="🛡️", layout="wide")
 
 # ==========================================
-# 🧠 THE "OFFLINE" INTELLIGENCE DATABASE
+# 🧠 UNIVERSAL INTELLIGENCE DATABASE
 # ==========================================
-# This engine runs LOCALLY. No API Key required. No 404 errors.
+# This dictionary detects PATTERNS, not just specific sentences.
 INTELLIGENCE = {
-    "HATE_SPEECH": {
-        "color": "#000000", # Black
-        "label": "DEHUMANIZATION",
+    "DEHUMANIZATION": {
+        "score": 30, # High Threat
+        "color": "#000000",
         "patterns": [
-            r"cancer for humanity", r"barbaric cult", r"given nothing to humanity", 
-            r"elimination", r"conversion", r"enslaving", r"loot maal", r"laundia", 
-            r"vermin", r"infest", r"plague", r"animals?", r"savages?", r"wipe out", 
-            r"eradicate", r"cleansing", r"subhuman", r"invaders"
+            r"cancer", r"vermin", r"cockroach", r"insect", r"infest", r"plague", 
+            r"filth", r"garbage", r"trash", r"animals?", r"beasts?", r"savages?", 
+            r"subhuman", r"parasite", r"disease", r"virus", r"bacteria"
         ]
     },
-    "RELIGIOUS_ATTACK": {
-        "color": "#FF0000", # Red
-        "label": "RELIGIOUS HOSTILITY",
+    "VIOLENCE_INCITEMENT": {
+        "score": 25,
+        "color": "#FF0000",
         "patterns": [
-            r"jihadis?", r"arab cult", r"7th century", r"ma?al e ganimat", 
-            r"malkal zamin", r"radical", r"extremist", r"terrorist"
+            r"eliminate", r"eradicate", r"wipe out", r"cleansing", r"crush", 
+            r"destroy them", r"kill", r"slaughter", r"burn", r"hang", r"shoot",
+            r"no mercy", r"hunting"
         ]
     },
-    "EMOTIONAL_MANIPULATION": {
-        "color": "#800080", # Purple
-        "label": "FEAR & ANGER",
+    "GROUP_ATTACK": {
+        "score": 15,
+        "color": "#FF4500",
         "patterns": [
-            r"violence", r"lawlessness", r"destruction", r"no peace", r"no progress",
-            r"crisis", r"collapse", r"danger", r"threat", r"deadly", r"fatal",
-            r"scandal", r"outrage", r"shameful", r"betrayal", r"cover-up"
+            r"cult", r"invaders?", r"illegals?", r"aliens?", r"thugs", 
+            r"criminals", r"terrorists?", r"rapists?", r"groomers?",
+            r"loot", r"steal", r"rob", r"jihadis?"
+        ]
+    },
+    "MANIPULATION_TACTICS": {
+        "score": 10,
+        "color": "#800080",
+        "patterns": [
+            r"barbaric", r"backward", r"primitive", r"uncivilized", 
+            r"brainwashed", r"indoctrinated", r"radical", r"extremist",
+            r"fundamentalist", r"threat to", r"danger to"
         ]
     }
 }
 
-class LocalBrain:
+class UniversalBrain:
     def __init__(self):
         self.vader = SentimentIntensityAnalyzer()
 
     def analyze(self, text):
         results = {
             "score": 0,
-            "hits": [],
+            "hits": {}, # Stores hits by category
             "verdict": "",
             "explanation": []
         }
         
         # 1. SCAN FOR PATTERNS
-        detected_categories = {}
+        total_hits = 0
         
         for category, data in INTELLIGENCE.items():
-            count = 0
+            results["hits"][category] = []
             for pattern in data["patterns"]:
                 # Find all matches (case insensitive)
                 matches = re.findall(pattern, text, re.IGNORECASE)
                 if matches:
-                    count += len(matches)
-                    for m in matches:
-                        results["hits"].append(f"**'{m}'** ({data['label']})")
-            
-            if count > 0:
-                detected_categories[data['label']] = count
+                    # Add unique hits to list
+                    unique_matches = list(set(matches))
+                    results["hits"][category].extend(unique_matches)
+                    
+                    # Calculate Score
+                    results["score"] += len(matches) * data["score"]
+                    total_hits += len(matches)
 
-        # 2. CALCULATE THREAT SCORE
-        # Hate speech is weighted heavily (30 points per hit)
-        score = 0
-        score += detected_categories.get("DEHUMANIZATION", 0) * 30
-        score += detected_categories.get("RELIGIOUS HOSTILITY", 0) * 20
-        score += detected_categories.get("FEAR & ANGER", 0) * 10
+        # Cap score at 100
+        results["score"] = min(results["score"], 100)
         
-        # VADER Sentiment Check (Negative sentiment adds points)
-        vs = self.vader.polarity_scores(text)
-        if vs['compound'] < -0.5:
-            score += 20
+        # 2. GENERATE DYNAMIC REPORT
+        # This part is now SMART. It reads what it found and writes a sentence about it.
+        
+        if results["hits"]["DEHUMANIZATION"]:
+            words_found = ", ".join([f"'{w}'" for w in results["hits"]["DEHUMANIZATION"][:3]])
+            results["explanation"].append(f"⚠️ **Dehumanization Detected:** The text refers to people as {words_found}. This is a dangerous tactic used to strip targets of human rights.")
             
-        results["score"] = min(score, 100)
+        if results["hits"]["VIOLENCE_INCITEMENT"]:
+            words_found = ", ".join([f"'{w}'" for w in results["hits"]["VIOLENCE_INCITEMENT"][:3]])
+            results["explanation"].append(f"🚨 **Incitement to Violence:** Usage of terms like {words_found} implies a call for physical harm or elimination.")
 
-        # 3. GENERATE HUMAN-READABLE REPORT
-        if results["score"] > 80:
-            results["verdict"] = "🚨 DANGEROUS HATE SPEECH"
-            results["explanation"].append("This text uses **dehumanizing language** ('cancer', 'vermin') to strip a group of their human status.")
-            results["explanation"].append("It promotes **hostility** by generalizing an entire community as 'barbaric' or a 'cult'.")
-            results["explanation"].append("This is not a political critique; it is an **attack on identity** meant to justify harm.")
+        if results["hits"]["GROUP_ATTACK"]:
+            words_found = ", ".join([f"'{w}'" for w in results["hits"]["GROUP_ATTACK"][:3]])
+            results["explanation"].append(f"🛑 **Group Hostility:** The text generalizes a group as {words_found}, promoting collective guilt.")
+
+        if results["score"] == 0:
+            results["verdict"] = "✅ SAFE CONTENT"
+            results["explanation"].append("No common hate speech patterns or manipulation triggers were detected.")
+        elif results["score"] > 75:
+            results["verdict"] = "🚨 EXTREME THREAT"
         elif results["score"] > 40:
-            results["verdict"] = "⚠️ HIGHLY TOXIC CONTENT"
-            results["explanation"].append("This text relies on **extreme emotional triggers** (Fear/Anger) to bypass logic.")
-            results["explanation"].append("It uses **us-vs-them** rhetoric to paint a specific group as an enemy.")
+            results["verdict"] = "⚠️ TOXIC CONTENT"
         else:
-            results["verdict"] = "✅ SAFE / NEUTRAL"
-            results["explanation"].append("No significant manipulation patterns detected.")
+            results["verdict"] = "⚠️ SUSPICIOUS"
 
         return results
 
@@ -121,8 +131,8 @@ def extract_from_pdf(file):
 # ==========================================
 # 🖥️ UI LAYOUT
 # ==========================================
-st.title("🛡️ Media Shield: Forensic Core")
-st.caption("Running in Offline Mode • No API Limits • Privacy Focused")
+st.title("🛡️ Media Shield: Universal Core")
+st.caption("Running in Offline Mode • Universal Pattern Matching")
 
 col1, col2 = st.columns([1, 1])
 
@@ -133,7 +143,7 @@ with col1:
     target_text = ""
     
     if input_type == "Paste Text / URL":
-        user_input = st.text_area("Content:", height=300, placeholder="Paste that hateful comment here...")
+        user_input = st.text_area("Content:", height=300, placeholder="Paste ANY controversial text here...")
         if user_input:
             if user_input.startswith("http"):
                 with st.spinner("🕷️ Deploying Scraper..."):
@@ -155,16 +165,16 @@ with col2:
     st.subheader("2. Forensic Report")
     
     if analyze_btn and target_text:
-        brain = LocalBrain()
+        brain = UniversalBrain()
         
-        with st.spinner("🔍 Scanning for Hate Speech patterns..."):
-            time.sleep(0.5) # Simulate processing for UX
+        with st.spinner("🔍 Scanning for universal hate patterns..."):
+            time.sleep(0.5) 
             data = brain.analyze(target_text)
             
         # DYNAMIC COLOR
         color = "#4CAF50" # Green
         if data["score"] > 40: color = "#FFA500" # Orange
-        if data["score"] > 80: color = "#FF0000" # Red
+        if data["score"] > 75: color = "#FF0000" # Red
         
         # VERDICT BOX
         st.markdown(f"""
@@ -177,16 +187,19 @@ with col2:
         
         # EXPLANATION
         st.markdown("### 📝 Analysis")
+        if not data["explanation"]:
+             st.markdown("- No threats detected.")
         for line in data["explanation"]:
             st.markdown(f"- {line}")
             
-        # SMOKING GUN (EVIDENCE)
-        if data["hits"]:
-            st.markdown("### 🔫 The Smoking Gun (Triggers Found)")
-            st.warning(", ".join(data["hits"]))
-            
-        # RADAR CHART REPLACEMENT (BAR CHART)
-        # Using a simple progress bar visual for simplicity and robustness
+        # EVIDENCE GRID
         st.markdown("---")
-        st.caption("FORENSIC BREAKDOWN")
-        st.progress(data["score"] / 100)
+        st.caption("EVIDENCE LOCKER")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Dehumanization", len(data["hits"]["DEHUMANIZATION"]))
+        with c2:
+            st.metric("Violence Calls", len(data["hits"]["VIOLENCE_INCITEMENT"]))
+        with c3:
+            st.metric("Group Attacks", len(data["hits"]["GROUP_ATTACK"]))
