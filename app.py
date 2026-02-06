@@ -7,7 +7,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import re
 import time
 
-# --- CLOUD FIX ---
+# --- CLOUD FIX: AUTO-DOWNLOAD BRAINS ---
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -19,14 +19,12 @@ nltk.download('punkt')
 nltk.download('punkt_tab')
 nltk.download('averaged_perceptron_tagger')
 
-# --- CONFIGURATION ---
+# --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="Media Shield: General AI", page_icon="🛡️", layout="wide")
 
 # ==========================================
 # 🧠 THE "GENERAL AI" DATABASE
 # ==========================================
-# Combining Holiday (Emotion), Cialdini (Pressure), and Dobelli (Logic)
-
 INTELLIGENCE = {
     # --- WING 1: EMOTION (Ryan Holiday) ---
     "ANGER": {
@@ -99,12 +97,9 @@ class GeneralAI:
         }
 
         # 1. PREPARE PATTERNS
-        # We process text to find matches for highlighting and counting
         matches = []
         for label, data in INTELLIGENCE.items():
             for pattern in data["patterns"]:
-                # Find all matches for this pattern
-                # We use regex to find the span (start, end) of the match
                 for match in re.finditer(pattern, text, re.IGNORECASE):
                     matches.append({
                         "start": match.start(),
@@ -115,8 +110,7 @@ class GeneralAI:
                         "color": data["color"]
                     })
 
-        # 2. RESOLVE OVERLAPS (Longer matches take precedence)
-        # e.g., "Act now" vs "Act" -> Keep "Act now"
+        # 2. RESOLVE OVERLAPS
         matches.sort(key=lambda x: (x["start"], -(x["end"] - x["start"])))
         final_matches = []
         last_end = 0
@@ -125,26 +119,21 @@ class GeneralAI:
             if m["start"] >= last_end:
                 final_matches.append(m)
                 last_end = m["end"]
-                
-                # Add to Score & Breakdown
                 results["breakdown"][m["category"]] += 1
                 results["triggers_found"].append(m["label"])
 
-        # 3. HIGHLIGHT TEXT (Rebuild string with HTML)
-        # We work backwards so index positions don't shift
+        # 3. HIGHLIGHT TEXT
         final_matches.sort(key=lambda x: x["start"], reverse=True)
         for m in final_matches:
             badge = f'<span style="background-color: {m["color"]}33; border-bottom: 2px solid {m["color"]}; border-radius: 4px; padding: 0 2px; font-weight: bold;" title="{m["label"]} ({m["category"]})">{text[m["start"]:m["end"]]}</span>'
             results["highlighted_text"] = results["highlighted_text"][:m["start"]] + badge + results["highlighted_text"][m["end"]:]
 
         # 4. CALCULATE FINAL SCORE
-        # Emotion = 10pts, Pressure = 15pts, Logic Fallacy = 20pts (Logic errors are heaviest)
         score = 0
         score += results["breakdown"]["EMOTION"] * 10
         score += results["breakdown"]["PRESSURE"] * 15
         score += results["breakdown"]["LOGIC"] * 20
         
-        # Add VADER Intensity
         vader = self.vader.polarity_scores(text)
         intensity = abs(vader['compound']) * 100
         if intensity > 50: score += 15
@@ -172,7 +161,51 @@ if btn and text_input:
     with col2:
         st.subheader("2. Cognitive Attack Surface")
         
-        # --- DETAILED LEGEND ---
+        # RADAR CHART
+        categories = ["EMOTION (Holiday)", "PRESSURE (Cialdini)", "LOGIC (Dobelli)"]
+        values = [data["breakdown"]["EMOTION"], data["breakdown"]["PRESSURE"], data["breakdown"]["LOGIC"]]
+        
+        values += [values[0]]
+        categories += [categories[0]]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatterpolar(
+            r=values,
+            theta=categories,
+            fill='toself',
+            name='Attack Intensity',
+            line_color='#FF4B4B'
+        ))
+        
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, max(max(values)+1, 5)])
+            ),
+            showlegend=False,
+            height=300,
+            margin=dict(l=40, r=40, t=20, b=20)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # METRICS
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Emotion Hits", data["breakdown"]["EMOTION"])
+        c2.metric("Pressure Hits", data["breakdown"]["PRESSURE"])
+        c3.metric("Logic Fallacies", data["breakdown"]["LOGIC"])
+        
+        st.metric("TOTAL THREAT SCORE", f"{data['score']}/100")
+
+    # --- FORENSIC VIEW ---
+    st.divider()
+    st.subheader("3. Forensic X-Ray (Visual Proof)")
+    
+    st.markdown(f"""
+    <div style="padding: 20px; background-color: #0e1117; border: 1px solid #444; border-radius: 10px; font-family: sans-serif; line-height: 1.6;">
+        {data['highlighted_text']}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # --- DETAILED LEGEND ---
     st.markdown("""
     <div style="margin-top: 20px; font-size: 0.9em; color: #ccc;">
         <strong>THE FORENSIC KEY:</strong> <br>
@@ -185,50 +218,3 @@ if btn and text_input:
         <span style="color:#8D6E63">■ Sunk Cost (Logic)</span>
     </div>
     """, unsafe_allow_html=True)
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-            r=values,
-            theta=categories,
-            fill='toself',
-            name='Attack Intensity',
-            line_color='#FF4B4B'
-        ))
-        
-    fig.update_layout(
-            polar=dict(
-                radialaxis=dict(visible=True, range=[0, max(max(values)+1, 5)])
-            ),
-            showlegend=False,
-            height=300,
-            margin=dict(l=40, r=40, t=20, b=20)
-        )
-    st.plotly_chart(fig, use_container_width=True)
-        
-        # METRICS
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Emotion Hits", data["breakdown"]["EMOTION"])
-    c2.metric("Pressure Hits", data["breakdown"]["PRESSURE"])
-    c3.metric("Logic Fallacies", data["breakdown"]["LOGIC"])
-        
-    st.metric("TOTAL THREAT SCORE", f"{data['score']}/100")
-
-    # --- FORENSIC VIEW ---
-    st.divider()
-    st.subheader("3. Forensic X-Ray (Visual Proof)")
-    
-    st.markdown(f"""
-    <div style="padding: 20px; background-color: #0e1117; border: 1px solid #444; border-radius: 10px; font-family: sans-serif; line-height: 1.6;">
-        {data['highlighted_text']}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.caption("Legend: 🔴 Emotion (Anger/Fear) • 🔵 Pressure (Scarcity/Authority) • 🟠 Logic (Us vs Them/Fallacies)")
-
-
-
-
-
-
-
-
-
